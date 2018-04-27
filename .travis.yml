@@ -1,0 +1,23 @@
+language: python
+
+python:
+ - "3.6"
+
+sudo: required
+
+services: docker
+
+before_install: pip install flake8
+
+# skip installation, requirements are handled in the Docker image
+install: true
+
+before_script:
+  - flake8 -v .
+
+script:
+ - docker run --rm --name pydoop -v $(pwd):/examples -d crs4/pydoop:latest
+ - "docker exec pydoop bash -c 'pip3 install --pre -r /examples/requirements.txt'"
+ - "docker exec pydoop bash -c 'while : ; do jps | grep DataNode && break; done'"
+ - "docker exec -e PYTHON=python3 -e DEBUG=true pydoop bash -c 'source /etc/profile && cd /examples/terasort && ./run'"
+ - docker stop pydoop
