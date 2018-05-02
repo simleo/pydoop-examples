@@ -1,1 +1,1 @@
-pydoop>=2.0a1
+pydoop>=2.0a3

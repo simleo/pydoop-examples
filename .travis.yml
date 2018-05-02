@@ -17,7 +17,7 @@ before_script:
 
 script:
  - docker run --rm --name pydoop -v $(pwd):/examples -d crs4/pydoop:latest
- - "docker exec pydoop bash -c 'pip3 install --pre pydoop>=2.0a1"
+ - "docker exec pydoop bash -c 'source /etc/profile && pip3 install --pre pydoop>=2.0a3"
  - "docker exec pydoop bash -c 'pip3 install -r /examples/requirements.txt'"
  - "docker exec pydoop bash -c 'while : ; do jps | grep DataNode && break; done'"
  - "docker exec -e PYTHON=python3 -e DEBUG=true pydoop bash -c 'source /etc/profile && cd /examples/terasort && ./run'"
