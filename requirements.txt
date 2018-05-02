@@ -1,2 +1,2 @@
-pydoop>=2.0a1
-bintrees
+-r requirements/terasort.txt
+-r requirements/pydeep.txt
