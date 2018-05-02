@@ -9,10 +9,9 @@ import logging
 import pydoop.mapreduce.api as api
 import pydoop.hdfs as hdfs
 from pydoop.utils.serialize import OpaqueInputSplit
-import json
 import struct
 import numpy as np
-from .keys import (GRAPH_ARCH_KEY, GRAPH_PATH_KEY)
+from .keys import GRAPH_ARCH_KEY
 from .models import model
 
 
@@ -22,7 +21,7 @@ LOGGER.setLevel(logging.LOG)
 
 
 class SamplesReader(api.RecordReader):
-    """FIXME"""
+
     def __init__(self, context):
         super(SamplesReader, self).__init__(context)
         self.logger = LOGGER.getChild("SamplesReader")

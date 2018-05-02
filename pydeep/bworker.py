@@ -1,4 +1,4 @@
-"""\ 
+"""\
 Process a stream of images into their bottleneck projection for a given
 architecture and a chosen bottleneck tensor.
 """
