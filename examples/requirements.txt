@@ -1,0 +1,2 @@
+-r requirements/terasort.txt
+-r requirements/pydeep.txt

@@ -1,2 +1,0 @@
-pydoop>=2.0a1
-bintrees
