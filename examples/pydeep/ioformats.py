@@ -1,16 +1,18 @@
-"""
-Specialized i/o support for pydpoets.
+"""\
+Hadoop I/O classes.
 
 The current implementation is somewhat minimalistic.
 An avro implementation would be more elegant, but probably slower.
 """
 
 import logging
+import struct
+
+import numpy as np
 import pydoop.mapreduce.api as api
 import pydoop.hdfs as hdfs
 from pydoop.utils.serialize import OpaqueInputSplit
-import struct
-import numpy as np
+
 from .keys import GRAPH_ARCH_KEY
 from .models import model
 

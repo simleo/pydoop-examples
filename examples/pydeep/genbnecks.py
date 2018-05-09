@@ -1,27 +1,26 @@
-"""
-This example is a more-or-less direct map-reduce reinterpretation
-of the [tensorflow for poets](FIXME-link) example.
+"""\
+Calculate all image feature vectors (bottlenecks) for the given
+network architecture.
 """
 
+from copy import deepcopy
+from multiprocessing import Process
+import argparse
+import itertools as it
+import os
+import random
+import sys
+import uuid
+
 from pydoop.app.submit import (
-    add_parser_common_arguments,
-    add_parser_arguments)
-from pydoop.app.submit import PydoopSubmitter
+    add_parser_common_arguments, add_parser_arguments, PydoopSubmitter
+)
 from pydoop.utils.serialize import OpaqueInputSplit, write_opaques
 from pydoop import hdfs
 
 from tflow import BottleneckProjector, save_graph
 from models import model
 from keys import GRAPH_PATH_KEY, GRAPH_ARCH_KEY
-
-from multiprocessing import Process
-from copy import deepcopy
-import sys
-import itertools as it
-import argparse
-import random
-import uuid
-import os
 
 # Pre-assembled options
 DEFAULT_NUM_MAPS = 10

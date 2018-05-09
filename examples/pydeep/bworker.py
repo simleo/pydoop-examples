@@ -1,6 +1,8 @@
 """\
-Process a stream of images into their bottleneck projection for a given
-architecture and a chosen bottleneck tensor.
+Calculate bottlenecks for all images in the input stream.
+
+Input key: image label
+Input value: image path
 """
 
 import pydoop.mapreduce.api as api
@@ -20,12 +22,10 @@ class Mapper(api.Mapper):
         jc = context.job_conf
         m = model[jc[GRAPH_ARCH_KEY]]
         m['path'] = jc[GRAPH_PATH_KEY]
-        # recover model_root, model
         self.projector = BottleneckProjector(m)
 
     def map(self, context):
-        # we expect key to be, respectively, the image label and value the file
-        # path. Here, if needed, we could also generate many derived
+        # Here, if needed, we could also generate many derived
         # (distorted) variants of the image
         context.emit(context.key, self.projector(context.value))
 

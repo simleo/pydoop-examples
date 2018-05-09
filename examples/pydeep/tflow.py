@@ -1,22 +1,14 @@
-# The contents of this file have been plagiarized, with abandon,
-# from [tensorflow for poets](FIXME-link).
+"""\
+Create, store, load and execute graphs needed to retrain the network.
 
-# The strategy supported by this module is the following:
+TODO: use the tf.data API
+"""
 
-#  1. create all the specialized graphs needed for:
-#     1. bottleneck calculation
-#     2. new traning network
-#  2. save the new graphs to hdfs
-#  3. use specialized classes to load and execute the graphs.
+import datetime
 
-
-# First pass implementation, we are not using any of the modern stuff like
-# the tf.data API
-
+import numpy as np
 import tensorflow as tf
 from tensorflow.python.platform import gfile
-import numpy as np
-import datetime
 
 
 def load_graph(path, return_elements):
@@ -41,7 +33,8 @@ class BottleneckProjector(object):
 
     @classmethod
     def create_graph(cls, model):
-        """Creates a new (disjoint) graph that contains: a jpeg to
+        """\
+        Create a new (disjoint) graph that contains: a JPEG to
         normalized data conversion; and a graph constructed by cutting
         at the bottleneck an existing, pre-trained network.
         """
@@ -92,8 +85,9 @@ class BottleneckProjector(object):
 
 
 def variable_summaries(var):
-    """Attach a lot of summaries to a Tensor
-       (for TensorBoard visualization)."""
+    """\
+    Attach summaries to Variable var (for TensorBoard).
+    """
     with tf.name_scope('summaries'):
         mean = tf.reduce_mean(var)
         tf.summary.scalar('mean', mean)
@@ -106,9 +100,9 @@ def variable_summaries(var):
 
 
 class Retrainer(object):
+
     @classmethod
     def create_graph(cls, model, n_classes):
-        """FIXME"""
         with tf.Graph().as_default() as graph:
             (ground_truth_input,
              final_tensor) = cls.add_training_ops(model, n_classes)
@@ -117,11 +111,13 @@ class Retrainer(object):
 
     @classmethod
     def add_training_ops(cls, model, n_classes):
-        """Adds a training graph.
+        """\
+        Add a training graph.
 
         The graph will accept in input a bottleneck vector, with size
         defined in model, and a ground truth with n_classes possible
-        options."""
+        options.
+        """
         bneck_size = model['bottleneck_tensor_size']
         bneck_input = tf.placeholder(
             tf.float32, shape=[None, bneck_size], name='bottleneck_input')
@@ -161,7 +157,8 @@ class Retrainer(object):
 
     @classmethod
     def add_evaluation_step(cls, result_tensor, ground_truth_tensor):
-        """Inserts the operations we need to evaluate the accuracy of our results.
+        """\
+        Add operations needed to evaluate results accuracy.
         """
         with tf.name_scope('accuracy'):
             with tf.name_scope('correct_prediction'):
@@ -196,9 +193,11 @@ class Retrainer(object):
         self.prediction = prediction
 
     def run_training_step(self, s, i, merged, bottlenecks, ground_truths):
-        # Feed the bottlenecks and ground truth into the graph, and run a
-        # training step. Capture training summaries for TensorBoard with
-        # the `merged` op.
+        """\
+        Feed the bottlenecks and ground truth into the graph, and run a
+        training step. Capture training summaries for TensorBoard with
+        the `merged` op.
+        """
         summary, _ = s.run(
             [merged, self.train_step],
             feed_dict={self.bottleneck_input: bottlenecks,
@@ -242,18 +241,19 @@ class Retrainer(object):
                                      predictions[i]))
 
     def run(self, FLAGS, get_random_bottlenecks):
-        """run the training
+        """\
+        Run the training.
 
-        get_random_bottlenecks is a function that requires in input the
-        following parameters:
+        get_random_bottlenecks is a function that takes the
+        following input parameters:
 
-         - category: a string choosen between training, testing or validation
-         - how_many: an integer that specifies how large should be the random
-                     sampling, if negative returns all
+         - category: "training", "testing" or "validation"
+         - how_many: an integer that specifies how large the random
+                     sample should be. If negative, return all bottlenecks.
         returns:
 
         - three lists with, respectively, bottleneck arrays, ground
-          truths, and images filenames.
+          truths, and image filenames.
         """
         with tf.Session(graph=self.graph) as s:
             merged = tf.summary.merge_all()
