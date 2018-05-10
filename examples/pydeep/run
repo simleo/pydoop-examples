@@ -2,6 +2,17 @@
 
 set -euo pipefail
 [ -n "${DEBUG:-}" ] && set -x
+this="${BASH_SOURCE-$0}"
+this_dir=$(cd -P -- "$(dirname -- "${this}")" && pwd -P)
+. "${this_dir}/../config.sh"
 
-export PYTHON="${PYTHON:-python}"
-${PYTHON} -c "import genbnecks"
+pushd "${this_dir}"
+img_dir="flower_photos"
+bneck_dir="bottlenecks"
+img_url="http://download.tensorflow.org/example_images/${img_dir}.tgz"
+[ -d "${img_dir}" ] || curl "${img_url}" | tar xz
+ensure_dfs_home
+${HDFS} dfs -test -d "${img_dir}" || ${HADOOP} distcp -atomic "file://${PWD}/${img_dir}" "${img_dir}"
+${HDFS} dfs -rm -r -f "${bneck_dir}"
+${PYTHON} genbnecks.py "${img_dir}" "${bneck_dir}"
+popd
