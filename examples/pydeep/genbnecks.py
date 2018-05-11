@@ -7,6 +7,7 @@ from copy import deepcopy
 from multiprocessing import Process
 import argparse
 import itertools as it
+import logging
 import os
 import random
 import sys
@@ -18,7 +19,7 @@ from pydoop.app.submit import (
 from pydoop.utils.serialize import OpaqueInputSplit, write_opaques
 from pydoop import hdfs
 
-from tflow import BottleneckProjector, save_graph
+from tflow import BottleneckProjector, get_model_graph, save_graph
 from models import model
 from keys import GRAPH_PATH_KEY, GRAPH_ARCH_KEY
 
@@ -47,14 +48,17 @@ def make_parser():
     return parser
 
 
-def get_categories_data(path):
+def get_categories_data(input_dir):
     categories = {}
-    for x in os.scandir(path):
-        if x.is_dir():
-            categories[x.name] = [os.path.join(x.path, f)
-                                  for f in os.listdir(x.path)
-                                  if (f.split('.')[-1].lower()
-                                      in ['jpg', 'jpeg'])]
+    ext = frozenset(('jpg', 'jpeg'))
+    with hdfs.hdfs() as fs:
+        for stat in fs.list_directory(input_dir):
+            if stat['kind'] == 'directory':
+                cat = stat['name'].rsplit('/', 1)[-1]
+                categories[cat] = [
+                    _['name'] for _ in fs.list_directory(stat['name'])
+                    if _['name'].rsplit('.', 1)[-1].lower() in ext
+                ]
     return categories
 
 
@@ -73,6 +77,8 @@ def add_D_arg(args, arg_name, arg_key):
 
 
 def prepare_and_save_graph(model, graph_path):
+    if not hdfs.path.exists(model['path']):
+        get_model_graph(model)
     graph = BottleneckProjector.create_graph(model)
     save_graph(graph, graph_path)
 
@@ -110,19 +116,25 @@ def main(argv=None):
     args.do_not_use_java_record_reader = True
     args.do_not_use_java_record_writer = True
 
-    hdfs.mkdir(args.input)  # FIXME check if it is already there
-    categories = get_categories_data(args.data_dir)
+    try:
+        m = model[args.architecture]
+    except KeyError:
+        sys.exit("ERROR: unknown architecture: {}".format(args.architecture))
+
+    logger = logging.getLogger("genbnecks")
+    logger.setLevel(args.log_level)
+    categories = get_categories_data(args.input)
+    logger.info("%d categories, %d total images",
+                len(categories), sum(map(len, categories.values())))
     random_shuffle(categories)
-    graph_path = os.path.join(args.input,
-                              '__graph-' + uuid.uuid4().hex + '.pb')
-    prepare_and_save_graph(model[args.architecture], graph_path)
+    graph_path = 'graph-{}.pb'.format(uuid.uuid4().hex)
+    prepare_and_save_graph(m, graph_path)
     add_D_arg(args, 'num_maps', NUM_MAPS_KEY)
     add_D_arg(args, 'architecture', GRAPH_ARCH_KEY)
     args.D.append([GRAPH_PATH_KEY, graph_path])
     args.num_reducers = 0
 
-    hdfs.mkdir(args.output)  # FIXME check if it is already there
-    # multi-thread on the following
+    hdfs.mkdir(args.output)
     procs = []
     for name in categories:
         nargs = deepcopy(args)

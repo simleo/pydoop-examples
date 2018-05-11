@@ -5,28 +5,71 @@ TODO: use the tf.data API
 """
 
 import datetime
+from mmap import PAGESIZE
+import os
+import shutil
+import sys
+import tarfile
+import tempfile
+import urllib
 
 import numpy as np
 import tensorflow as tf
-from tensorflow.python.platform import gfile
+import pydoop.hdfs as hdfs
+
+
+# def get_model_graph(url, filename, dest_dir=None):
+def get_model_graph(model):
+    tar_name = model['url'].rsplit('/', 1)[-1]
+
+    def _report(count, block_size, total_size):
+        perc = 100 * count * block_size / total_size
+        sys.stdout.write('\r>> Getting %s %.1f%%' % (tar_name, perc))
+        sys.stdout.flush()
+
+    tempd = tempfile.mkdtemp(prefix="pydeep_")
+    tar_path = os.path.join(tempd, tar_name)
+    tar_path, _ = urllib.request.urlretrieve(model['url'], tar_path, _report)
+    print()
+    dest_dir = hdfs.path.dirname(model['path'])
+    if dest_dir:
+        hdfs.mkdir(dest_dir)
+    with tarfile.open(tar_path, 'r:gz') as tar:
+        try:
+            info = tar.getmember(model['filename'])
+        except KeyError:
+            raise ValueError("{} not found in {}".format(
+                model['filename'], tar_name))
+        f_in = tar.extractfile(info)
+        with hdfs.open(model['path'], 'wb') as f_out:
+            while True:
+                chunk = f_in.read(PAGESIZE)
+                if not chunk:
+                    break
+                f_out.write(chunk)
+    shutil.rmtree(tempd)
 
 
 def load_graph(path, return_elements):
+    with hdfs.open(path, 'rb') as f:
+        serialized_graph_def = f.read()
     with tf.Graph().as_default() as graph:
-        with gfile.FastGFile(path, 'rb') as f:
-            graph_def = tf.GraphDef()
-            graph_def.ParseFromString(f.read())
-            elements = tf.import_graph_def(graph_def,
-                                           name='',  # disable 'import' prfx
-                                           return_elements=return_elements)
+        graph_def = tf.GraphDef()
+        graph_def.ParseFromString(serialized_graph_def)
+        elements = tf.import_graph_def(
+            graph_def,
+            name='',  # disable default 'import' prefix
+            return_elements=return_elements
+        )
     return graph, elements
 
 
 def save_graph(graph, path):
     with tf.Session(graph=graph):
         output_graph_def = graph.as_graph_def(add_shapes=True)
-        with gfile.FastGFile(path, 'wb') as f:
-            f.write(output_graph_def.SerializeToString())
+        serialized_graph_def = output_graph_def.SerializeToString()
+    with hdfs.open(path, 'wb') as f:
+        f.write(serialized_graph_def)
 
 
 class BottleneckProjector(object):
@@ -75,8 +118,9 @@ class BottleneckProjector(object):
         self.bneck_tensor = bneck_tensor
 
     def project(self, image_path):
+        with hdfs.open(image_path, 'rb') as f:
+            jpeg_data = f.read()
         with tf.Session(graph=self.graph) as s:
-            jpeg_data = gfile.FastGFile(image_path, 'rb').read()
             m_idat = s.run(self.mul_image,
                            {self.input_jpeg: jpeg_data})
             b_val = s.run(self.bneck_tensor,

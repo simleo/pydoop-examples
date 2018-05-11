@@ -1,6 +1,10 @@
+BASE_URL = "http://download.tensorflow.org/models"
+
 model = {
     'inception_v3': {
         'path':  'inception_v3/classify_image_graph_def.pb',
+        'url': '%s/image/imagenet/inception-2015-12-05.tgz' % BASE_URL,
+        'filename': 'classify_image_graph_def.pb',
         'bottleneck_tensor_name': 'pool_3/_reshape:0',
         'bottleneck_tensor_size': 2048,
         'jpg_input': 'jpg_input_data',

@@ -6,6 +6,10 @@ this="${BASH_SOURCE-$0}"
 this_dir=$(cd -P -- "$(dirname -- "${this}")" && pwd -P)
 . "${this_dir}/../config.sh"
 
+NUM_MAPS="${NUM_MAPS:-4}"
+OPTS=( "--num-maps" "${NUM_MAPS}" )
+[ -n "${DEBUG:-}" ] && OPTS+=( "--log-level" "DEBUG" )
+
 pushd "${this_dir}"
 img_dir="flower_photos"
 bneck_dir="bottlenecks"
@@ -14,5 +18,5 @@ img_url="http://download.tensorflow.org/example_images/${img_dir}.tgz"
 ensure_dfs_home
 ${HDFS} dfs -test -d "${img_dir}" || ${HADOOP} distcp -atomic "file://${PWD}/${img_dir}" "${img_dir}"
 ${HDFS} dfs -rm -r -f "${bneck_dir}"
-${PYTHON} genbnecks.py "${img_dir}" "${bneck_dir}"
+${PYTHON} genbnecks.py "${OPTS[@]}" "${img_dir}" "${bneck_dir}"
 popd
