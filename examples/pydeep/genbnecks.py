@@ -4,7 +4,7 @@ network architecture.
 """
 
 from copy import deepcopy
-from multiprocessing import Process
+from multiprocessing import Process, log_to_stderr
 import argparse
 import itertools as it
 import logging
@@ -22,6 +22,9 @@ from pydoop import hdfs
 from tflow import BottleneckProjector, get_model_graph, save_graph
 from models import model
 from keys import GRAPH_PATH_KEY, GRAPH_ARCH_KEY
+
+
+LOGGER = logging.getLogger("genbnecks")
 
 # Pre-assembled options
 DEFAULT_NUM_MAPS = 10
@@ -79,7 +82,9 @@ def add_D_arg(args, arg_name, arg_key):
 def prepare_and_save_graph(model, graph_path):
     if not hdfs.path.exists(model['path']):
         get_model_graph(model)
+    LOGGER.info("creating graph")
     graph = BottleneckProjector.create_graph(model)
+    LOGGER.info("saving graph to %s", graph_path)
     save_graph(graph, graph_path)
 
 
@@ -97,8 +102,10 @@ def generate_input_splits(uri, n_mappers, images):
 
 
 def run_map_job(args, unknown_args, images):
+    logger = log_to_stderr(args.log_level)
+    logger.info("job: %s", args.job_name)
     uri = os.path.join(args.input, '__' + uuid.uuid4().hex)
-    generate_input_splits(uri, images)
+    generate_input_splits(uri, args.num_maps, images)
     args.D.append([PYDOOP_EXTERNALSPLITS_URI_KEY, uri])
     submitter = PydoopSubmitter()
     submitter.set_args(args, [] if unknown_args is None else unknown_args)
@@ -121,10 +128,9 @@ def main(argv=None):
     except KeyError:
         sys.exit("ERROR: unknown architecture: {}".format(args.architecture))
 
-    logger = logging.getLogger("genbnecks")
-    logger.setLevel(args.log_level)
+    LOGGER.setLevel(args.log_level)
     categories = get_categories_data(args.input)
-    logger.info("%d categories, %d total images",
+    LOGGER.info("%d categories, %d total images",
                 len(categories), sum(map(len, categories.values())))
     random_shuffle(categories)
     graph_path = 'graph-{}.pb'.format(uuid.uuid4().hex)
@@ -142,7 +148,7 @@ def main(argv=None):
         nargs.output = os.path.join(nargs.output, name)
         p = Process(target=run_map_job,
                     args=[nargs, unknown_args, categories[name]])
-        p.append(p)
+        procs.append(p)
     for p in procs:
         p.start()
     for p in procs:

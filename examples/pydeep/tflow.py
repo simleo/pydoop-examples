@@ -18,7 +18,6 @@ import tensorflow as tf
 import pydoop.hdfs as hdfs
 
 
-# def get_model_graph(url, filename, dest_dir=None):
 def get_model_graph(model):
     tar_name = model['url'].rsplit('/', 1)[-1]
 
@@ -51,8 +50,7 @@ def get_model_graph(model):
 
 
 def load_graph(path, return_elements):
-    with hdfs.open(path, 'rb') as f:
-        serialized_graph_def = f.read()
+    serialized_graph_def = hdfs.load(path)
     with tf.Graph().as_default() as graph:
         graph_def = tf.GraphDef()
         graph_def.ParseFromString(serialized_graph_def)
@@ -68,8 +66,7 @@ def save_graph(graph, path):
     with tf.Session(graph=graph):
         output_graph_def = graph.as_graph_def(add_shapes=True)
         serialized_graph_def = output_graph_def.SerializeToString()
-    with hdfs.open(path, 'wb') as f:
-        f.write(serialized_graph_def)
+    hdfs.dump(serialized_graph_def, path)
 
 
 class BottleneckProjector(object):
