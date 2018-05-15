@@ -50,7 +50,8 @@ def get_model_graph(model):
 
 
 def load_graph(path, return_elements):
-    serialized_graph_def = hdfs.load(path)
+    with hdfs.open(path, 'rb') as f:
+        serialized_graph_def = f.read()
     with tf.Graph().as_default() as graph:
         graph_def = tf.GraphDef()
         graph_def.ParseFromString(serialized_graph_def)

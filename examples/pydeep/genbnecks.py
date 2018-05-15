@@ -154,6 +154,9 @@ def main(argv=None):
     for p in procs:
         p.join()
 
+    if any(_.exitcode for _ in procs):
+        sys.exit("ERROR: one or more workers failed")
+
 
 if __name__ == "__main__":
     main(sys.argv)

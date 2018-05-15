@@ -10,6 +10,8 @@ NUM_MAPS="${NUM_MAPS:-4}"
 OPTS=( "--num-maps" "${NUM_MAPS}" )
 [ -n "${DEBUG:-}" ] && OPTS+=( "--log-level" "DEBUG" )
 
+export LIBHDFS_OPTS="-Xmx512m"
+
 pushd "${this_dir}"
 img_dir="flower_photos"
 bneck_dir="bottlenecks"
