@@ -4,7 +4,8 @@ network architecture.
 """
 
 from copy import deepcopy
-from multiprocessing import Process, log_to_stderr
+from threading import Thread
+from queue import Queue
 import argparse
 import itertools as it
 import logging
@@ -25,6 +26,7 @@ from keys import GRAPH_PATH_KEY, GRAPH_ARCH_KEY
 
 
 LOGGER = logging.getLogger("genbnecks")
+RETVALS = Queue()
 
 # Pre-assembled options
 DEFAULT_NUM_MAPS = 10
@@ -98,18 +100,21 @@ def grouper(iterable, n, fillvalue=None):
 def generate_input_splits(uri, n_mappers, images):
     n = len(images) // n_mappers
     opaques = [OpaqueInputSplit(1, list(g)) for g in grouper(images, n)]
-    write_opaques(opaques, uri)
+    with hdfs.open(uri, 'wb') as f:
+        write_opaques(opaques, f)
 
 
 def run_map_job(args, unknown_args, images):
-    logger = log_to_stderr(args.log_level)
-    logger.info("job: %s", args.job_name)
+    logger = logging.getLogger(args.job_name)
+    logger.setLevel(args.log_level)
     uri = os.path.join(args.input, '__' + uuid.uuid4().hex)
+    logger.debug("saving input splits to: %s", uri)
     generate_input_splits(uri, args.num_maps, images)
     args.D.append([PYDOOP_EXTERNALSPLITS_URI_KEY, uri])
     submitter = PydoopSubmitter()
     submitter.set_args(args, [] if unknown_args is None else unknown_args)
     submitter.run()
+    RETVALS.put_nowait(0)
 
 
 def main(argv=None):
@@ -146,15 +151,15 @@ def main(argv=None):
         nargs = deepcopy(args)
         nargs.job_name += '-' + name
         nargs.output = os.path.join(nargs.output, name)
-        p = Process(target=run_map_job,
-                    args=[nargs, unknown_args, categories[name]])
+        p = Thread(target=run_map_job,
+                   args=[nargs, unknown_args, categories[name]])
         procs.append(p)
     for p in procs:
         p.start()
     for p in procs:
         p.join()
 
-    if any(_.exitcode for _ in procs):
+    if RETVALS.qsize() < len(procs):
         sys.exit("ERROR: one or more workers failed")
 
 
