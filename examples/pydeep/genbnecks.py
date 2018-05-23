@@ -124,7 +124,6 @@ def main(argv=None):
     args.module = 'bworker'
     args.upload_file_to_cache = [
         'models.py', 'bworker.py', 'tflow.py', 'ioformats.py']
-    args.python_zip = ['']
     args.do_not_use_java_record_reader = True
     args.do_not_use_java_record_writer = True
 
