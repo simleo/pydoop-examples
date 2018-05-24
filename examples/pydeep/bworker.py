@@ -8,11 +8,11 @@ Input value: image path
 import pydoop.mapreduce.api as api
 import pydoop.mapreduce.pipes as pp
 
-from .ioformats import SamplesReader as Reader
-from .ioformats import BottleneckProjectionsWriter as Writer
-from .tflow import BottleneckProjector
-from .models import model
-from .keys import (GRAPH_ARCH_KEY, GRAPH_PATH_KEY)
+from pydeep.ioformats import SamplesReader as Reader
+from pydeep.ioformats import BottleneckProjectionsWriter as Writer
+from pydeep.tflow import BottleneckProjector
+from pydeep.models import model
+from pydeep.keys import GRAPH_ARCH_KEY, GRAPH_PATH_KEY
 
 
 class Mapper(api.Mapper):

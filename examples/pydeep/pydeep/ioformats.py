@@ -19,7 +19,7 @@ from .models import model
 
 logging.basicConfig()
 LOGGER = logging.getLogger("pydeep.ioformats")
-LOGGER.setLevel(logging.LOG)
+LOGGER.setLevel(logging.INFO)
 
 
 class SamplesReader(api.RecordReader):

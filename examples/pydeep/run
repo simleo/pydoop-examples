@@ -6,6 +6,8 @@ this="${BASH_SOURCE-$0}"
 this_dir=$(cd -P -- "$(dirname -- "${this}")" && pwd -P)
 . "${this_dir}/../config.sh"
 
+[ ${PY_VER} -le 2 ] && die "ERROR: Python 3 required"
+
 NUM_MAPS="${NUM_MAPS:-4}"
 OPTS=( "--num-maps" "${NUM_MAPS}" )
 [ -n "${DEBUG:-}" ] && OPTS+=( "--log-level" "DEBUG" )

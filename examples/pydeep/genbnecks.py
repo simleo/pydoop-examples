@@ -11,7 +11,9 @@ import itertools as it
 import logging
 import os
 import random
+import shutil
 import sys
+import tempfile
 import uuid
 
 from pydoop.app.submit import (
@@ -20,13 +22,14 @@ from pydoop.app.submit import (
 from pydoop.utils.serialize import OpaqueInputSplit, write_opaques
 from pydoop import hdfs
 
-from tflow import BottleneckProjector, get_model_graph, save_graph
-from models import model
-from keys import GRAPH_PATH_KEY, GRAPH_ARCH_KEY
+from pydeep.tflow import BottleneckProjector, get_model_graph, save_graph
+from pydeep.models import model
+from pydeep.keys import GRAPH_PATH_KEY, GRAPH_ARCH_KEY
 
 
 LOGGER = logging.getLogger("genbnecks")
 RETVALS = Queue()
+PACKAGE = "pydeep"
 
 # Pre-assembled options
 DEFAULT_NUM_MAPS = 10
@@ -118,12 +121,18 @@ def run_map_job(args, unknown_args, images):
 
 
 def main(argv=None):
+
+    os.chdir(os.path.dirname(os.path.abspath(__file__)))
+    wd = tempfile.mkdtemp(prefix="pydeep_")
+    zip_fn = os.path.join(wd, "{}.zip".format(PACKAGE))
+    shutil.make_archive(*zip_fn.rsplit(".", 1), base_dir=PACKAGE)
+
     parser = make_parser()
     args, unknown_args = parser.parse_known_args(argv)
     args.job_name = 'bworker'
     args.module = 'bworker'
-    args.upload_file_to_cache = [
-        'models.py', 'bworker.py', 'tflow.py', 'ioformats.py']
+    args.upload_file_to_cache = ['bworker.py']
+    args.python_zip = [zip_fn]
     args.do_not_use_java_record_reader = True
     args.do_not_use_java_record_writer = True
 
@@ -158,6 +167,7 @@ def main(argv=None):
     for p in procs:
         p.join()
 
+    shutil.rmtree(wd)
     if RETVALS.qsize() < len(procs):
         sys.exit("ERROR: one or more workers failed")
 
