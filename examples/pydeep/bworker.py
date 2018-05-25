@@ -27,7 +27,7 @@ class Mapper(api.Mapper):
     def map(self, context):
         # Here, if needed, we could also generate many derived
         # (distorted) variants of the image
-        context.emit(context.key, self.projector(context.value))
+        context.emit(context.key, self.projector.project(context.value))
 
 
 factory = pp.Factory(mapper_class=Mapper, record_reader_class=Reader,

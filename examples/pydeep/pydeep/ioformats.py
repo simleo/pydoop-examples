@@ -5,6 +5,7 @@ The current implementation is somewhat minimalistic.
 An avro implementation would be more elegant, but probably slower.
 """
 
+import io
 import logging
 import struct
 
@@ -28,7 +29,8 @@ class SamplesReader(api.RecordReader):
         super(SamplesReader, self).__init__(context)
         self.logger = LOGGER.getChild("SamplesReader")
         self.logger.debug('started')
-        self.isplit = OpaqueInputSplit().read_buffer(context.input_split)
+        raw_split = context.get_input_split(raw=True)
+        self.isplit = OpaqueInputSplit().read(io.BytesIO(raw_split))
         self.paths = self.isplit.payload
         self.n_paths = len(self.paths)
 
@@ -36,8 +38,10 @@ class SamplesReader(api.RecordReader):
         pass
 
     def next(self):
-        while len(self.paths) > 0:
-            yield (1, self.paths.pop())
+        try:
+            return 1, self.paths.pop()
+        except IndexError:
+            raise StopIteration
 
     def get_progress(self):
         return float(len(self.paths) / self.n_paths)
