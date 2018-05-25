@@ -7,7 +7,6 @@ from copy import deepcopy
 from threading import Thread
 from queue import Queue
 import argparse
-import itertools as it
 import logging
 import os
 import random
@@ -93,18 +92,12 @@ def prepare_and_save_graph(model, graph_path):
     save_graph(graph, graph_path)
 
 
-def grouper(iterable, n, fillvalue=None):
-    "Collect data into fixed-length chunks or blocks"
-    # grouper('ABCDEFG', 3, 'x') --> ABC DEF Gxx"
-    args = [iter(iterable)] * n
-    return it.zip_longest(*args, fillvalue=fillvalue)
-
-
 def generate_input_splits(uri, n_mappers, images):
-    n = len(images) // n_mappers
-    opaques = [OpaqueInputSplit(1, list(g)) for g in grouper(images, n)]
+    groups = [[] for _ in range(n_mappers)]
+    for i, img in enumerate(images):
+        groups[i % n_mappers].append(img)
     with hdfs.open(uri, 'wb') as f:
-        write_opaques(opaques, f)
+        write_opaques([OpaqueInputSplit(1, _) for _ in groups], f)
 
 
 def run_map_job(args, unknown_args, images):
