@@ -2,6 +2,36 @@
 
 set -euo pipefail
 [ -n "${DEBUG:-}" ] && set -x
+this="${BASH_SOURCE-$0}"
+this_dir=$(cd -P -- "$(dirname -- "${this}")" && pwd -P)
+. "${this_dir}/../config.sh"
 
-export PYTHON="${PYTHON:-python}"
-${PYTHON} -c "import genbnecks"
+downsample () {
+    local d=$1
+    shopt -q -o xtrace && local reset_x=1
+    set +x
+    find "${d}" -mindepth 2 -maxdepth 2 -type f | while read f; \
+	do [ $(( RANDOM % 20 )) -gt 1 ] && rm -f "${f}";
+    done
+    [ -n ${reset_x} ] && set -x
+}
+
+[ ${PY_VER} -le 2 ] && die "ERROR: Python 3 required"
+
+NUM_MAPS="${NUM_MAPS:-4}"
+OPTS=( "--num-maps" "${NUM_MAPS}" )
+[ -n "${DEBUG:-}" ] && OPTS+=( "--log-level" "DEBUG" )
+
+export LIBHDFS_OPTS="-Xmx512m"
+
+pushd "${this_dir}"
+img_dir="flower_photos"
+bneck_dir="bottlenecks"
+img_url="http://download.tensorflow.org/example_images/${img_dir}.tgz"
+[ -d "${img_dir}" ] || curl "${img_url}" | tar xz
+[ -n "${DEBUG:-}" ] && downsample "${img_dir}"
+ensure_dfs_home
+${HDFS} dfs -test -d "${img_dir}" || ${HADOOP} distcp -atomic "file://${PWD}/${img_dir}" "${img_dir}"
+${HDFS} dfs -rm -r -f "${bneck_dir}"
+${PYTHON} genbnecks.py "${OPTS[@]}" "${img_dir}" "${bneck_dir}"
+popd

@@ -1,47 +1,81 @@
-# The contents of this file have been plagiarized, with abandon,
-# from [tensorflow for poets](FIXME-link).
+"""\
+Create, store, load and execute graphs needed to retrain the network.
 
-# The strategy supported by this module is the following:
+TODO: use the tf.data API
+"""
 
-#  1. create all the specialized graphs needed for:
-#     1. bottleneck calculation
-#     2. new traning network
-#  2. save the new graphs to hdfs
-#  3. use specialized classes to load and execute the graphs.
-
-
-# First pass implementation, we are not using any of the modern stuff like
-# the tf.data API
-
-import tensorflow as tf
-from tensorflow.python.platform import gfile
-import numpy as np
 import datetime
+from mmap import PAGESIZE
+import os
+import shutil
+import sys
+import tarfile
+import tempfile
+import urllib
+
+import numpy as np
+import tensorflow as tf
+import pydoop.hdfs as hdfs
+
+
+def get_model_graph(model):
+    tar_name = model['url'].rsplit('/', 1)[-1]
+
+    def _report(count, block_size, total_size):
+        perc = 100 * count * block_size / total_size
+        sys.stdout.write('\r>> Getting %s %.1f%%' % (tar_name, perc))
+        sys.stdout.flush()
+
+    tempd = tempfile.mkdtemp(prefix="pydeep_")
+    tar_path = os.path.join(tempd, tar_name)
+    tar_path, _ = urllib.request.urlretrieve(model['url'], tar_path, _report)
+    print()
+    dest_dir = hdfs.path.dirname(model['path'])
+    if dest_dir:
+        hdfs.mkdir(dest_dir)
+    with tarfile.open(tar_path, 'r:gz') as tar:
+        try:
+            info = tar.getmember(model['filename'])
+        except KeyError:
+            raise ValueError("{} not found in {}".format(
+                model['filename'], tar_name))
+        f_in = tar.extractfile(info)
+        with hdfs.open(model['path'], 'wb') as f_out:
+            while True:
+                chunk = f_in.read(PAGESIZE)
+                if not chunk:
+                    break
+                f_out.write(chunk)
+    shutil.rmtree(tempd)
 
 
 def load_graph(path, return_elements):
+    with hdfs.open(path, 'rb') as f:
+        serialized_graph_def = f.read()
     with tf.Graph().as_default() as graph:
-        with gfile.FastGFile(path, 'rb') as f:
-            graph_def = tf.GraphDef()
-            graph_def.ParseFromString(f.read())
-            elements = tf.import_graph_def(graph_def,
-                                           name='',  # disable 'import' prfx
-                                           return_elements=return_elements)
+        graph_def = tf.GraphDef()
+        graph_def.ParseFromString(serialized_graph_def)
+        elements = tf.import_graph_def(
+            graph_def,
+            name='',  # disable default 'import' prefix
+            return_elements=return_elements
+        )
     return graph, elements
 
 
 def save_graph(graph, path):
     with tf.Session(graph=graph):
         output_graph_def = graph.as_graph_def(add_shapes=True)
-        with gfile.FastGFile(path, 'wb') as f:
-            f.write(output_graph_def.SerializeToString())
+        serialized_graph_def = output_graph_def.SerializeToString()
+    hdfs.dump(serialized_graph_def, path)
 
 
 class BottleneckProjector(object):
 
     @classmethod
     def create_graph(cls, model):
-        """Creates a new (disjoint) graph that contains: a jpeg to
+        """\
+        Create a new (disjoint) graph that contains: a JPEG to
         normalized data conversion; and a graph constructed by cutting
         at the bottleneck an existing, pre-trained network.
         """
@@ -82,8 +116,9 @@ class BottleneckProjector(object):
         self.bneck_tensor = bneck_tensor
 
     def project(self, image_path):
+        with hdfs.open(image_path, 'rb') as f:
+            jpeg_data = f.read()
         with tf.Session(graph=self.graph) as s:
-            jpeg_data = gfile.FastGFile(image_path, 'rb').read()
             m_idat = s.run(self.mul_image,
                            {self.input_jpeg: jpeg_data})
             b_val = s.run(self.bneck_tensor,
@@ -92,8 +127,9 @@ class BottleneckProjector(object):
 
 
 def variable_summaries(var):
-    """Attach a lot of summaries to a Tensor
-       (for TensorBoard visualization)."""
+    """\
+    Attach summaries to Variable var (for TensorBoard).
+    """
     with tf.name_scope('summaries'):
         mean = tf.reduce_mean(var)
         tf.summary.scalar('mean', mean)
@@ -106,9 +142,9 @@ def variable_summaries(var):
 
 
 class Retrainer(object):
+
     @classmethod
     def create_graph(cls, model, n_classes):
-        """FIXME"""
         with tf.Graph().as_default() as graph:
             (ground_truth_input,
              final_tensor) = cls.add_training_ops(model, n_classes)
@@ -117,11 +153,13 @@ class Retrainer(object):
 
     @classmethod
     def add_training_ops(cls, model, n_classes):
-        """Adds a training graph.
+        """\
+        Add a training graph.
 
         The graph will accept in input a bottleneck vector, with size
         defined in model, and a ground truth with n_classes possible
-        options."""
+        options.
+        """
         bneck_size = model['bottleneck_tensor_size']
         bneck_input = tf.placeholder(
             tf.float32, shape=[None, bneck_size], name='bottleneck_input')
@@ -161,7 +199,8 @@ class Retrainer(object):
 
     @classmethod
     def add_evaluation_step(cls, result_tensor, ground_truth_tensor):
-        """Inserts the operations we need to evaluate the accuracy of our results.
+        """\
+        Add operations needed to evaluate results accuracy.
         """
         with tf.name_scope('accuracy'):
             with tf.name_scope('correct_prediction'):
@@ -196,9 +235,11 @@ class Retrainer(object):
         self.prediction = prediction
 
     def run_training_step(self, s, i, merged, bottlenecks, ground_truths):
-        # Feed the bottlenecks and ground truth into the graph, and run a
-        # training step. Capture training summaries for TensorBoard with
-        # the `merged` op.
+        """\
+        Feed the bottlenecks and ground truth into the graph, and run a
+        training step. Capture training summaries for TensorBoard with
+        the `merged` op.
+        """
         summary, _ = s.run(
             [merged, self.train_step],
             feed_dict={self.bottleneck_input: bottlenecks,
@@ -242,18 +283,19 @@ class Retrainer(object):
                                      predictions[i]))
 
     def run(self, FLAGS, get_random_bottlenecks):
-        """run the training
+        """\
+        Run the training.
 
-        get_random_bottlenecks is a function that requires in input the
-        following parameters:
+        get_random_bottlenecks is a function that takes the
+        following input parameters:
 
-         - category: a string choosen between training, testing or validation
-         - how_many: an integer that specifies how large should be the random
-                     sampling, if negative returns all
+         - category: "training", "testing" or "validation"
+         - how_many: an integer that specifies how large the random
+                     sample should be. If negative, return all bottlenecks.
         returns:
 
         - three lists with, respectively, bottleneck arrays, ground
-          truths, and images filenames.
+          truths, and image filenames.
         """
         with tf.Session(graph=self.graph) as s:
             merged = tf.summary.merge_all()
