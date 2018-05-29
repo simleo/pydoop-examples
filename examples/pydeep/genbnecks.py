@@ -9,7 +9,6 @@ from queue import Queue
 import argparse
 import logging
 import os
-import random
 import shutil
 import sys
 import tempfile
@@ -67,11 +66,6 @@ def get_categories_data(input_dir):
                     if _['name'].rsplit('.', 1)[-1].lower() in ext
                 ]
     return categories
-
-
-def random_shuffle(categories):
-    for k in categories:
-        random.shuffle(categories[k])
 
 
 def add_D_arg(args, arg_name, arg_key):
@@ -138,7 +132,6 @@ def main(argv=None):
     categories = get_categories_data(args.input)
     LOGGER.info("%d categories, %d total images",
                 len(categories), sum(map(len, categories.values())))
-    random_shuffle(categories)
     graph_path = 'graph-{}.pb'.format(uuid.uuid4().hex)
     prepare_and_save_graph(m, graph_path)
     add_D_arg(args, 'num_maps', NUM_MAPS_KEY)
