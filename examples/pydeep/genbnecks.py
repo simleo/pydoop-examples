@@ -1,6 +1,41 @@
 """\
 Calculate all image feature vectors (bottlenecks) for the given
 network architecture.
+
+Input
+-----
+
+HDFS dir with one subdir per class, each containing JPEG images of items
+belonging to that class. At least two classes are required. Image files must
+end in .jpg or .jpeg.
+
+flower_photos/
+|-- roses
+|   |-- bar.jpg
+|   `-- foo.jpg
+`-- tulips
+    |-- tar.jpg
+    |-- taz.jpg
+    `-- waz.jpg
+
+Output
+------
+
+HDFS dir with one subdir per class, each containing one part* file for each
+map task. Each file contains a raw binary dump of all feature vectors, as
+returned by numpy.ndarray.tobytes, one right after the other.
+
+bottlenecks/
+|-- roses
+|   |-- part-m-00000
+|   |-- part-m-00001
+|   `-- _SUCCESS
+`-- tulips
+    |-- part-m-00000
+    |-- part-m-00001
+    `-- _SUCCESS
+
+One separate Hadoop job is submitted for each class.
 """
 
 from copy import deepcopy
@@ -29,7 +64,6 @@ LOGGER = logging.getLogger("genbnecks")
 RETVALS = Queue()
 PACKAGE = "pydeep"
 
-# Pre-assembled options
 DEFAULT_NUM_MAPS = 10
 DEFAULT_ARCHITECTURE = 'inception_v3'
 NUM_MAPS_KEY = 'mapreduce.job.maps'
@@ -40,40 +74,38 @@ PYDOOP_EXTERNALSPLITS_URI_KEY = 'pydoop.mapreduce.pipes.externalsplits.uri'
 def make_parser():
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        '--num-maps', metavar='INT', type=int,
-        default=DEFAULT_NUM_MAPS,
-        help=''
+        '--num-maps', metavar='INT', type=int, default=DEFAULT_NUM_MAPS,
     )
     parser.add_argument(
-        '--architecture', metavar='STR', type=str,
-        default=DEFAULT_ARCHITECTURE,
-        help=''
+        '--architecture', metavar='STR', default=DEFAULT_ARCHITECTURE,
     )
     add_parser_common_arguments(parser)
     add_parser_arguments(parser)
     return parser
 
 
-def get_categories_data(input_dir):
-    categories = {}
+def map_input_files(input_dir):
+    """\
+    Map each class to the list of available files for that class.
+    """
+    img_map = {}
     ext = frozenset(('jpg', 'jpeg'))
     with hdfs.hdfs() as fs:
         for stat in fs.list_directory(input_dir):
             if stat['kind'] == 'directory':
-                cat = stat['name'].rsplit('/', 1)[-1]
-                categories[cat] = [
+                cls = stat['name'].rsplit('/', 1)[-1]
+                img_map[cls] = [
                     _['name'] for _ in fs.list_directory(stat['name'])
                     if _['name'].rsplit('.', 1)[-1].lower() in ext
                 ]
-    return categories
+    return img_map
 
 
 def add_D_arg(args, arg_name, arg_key):
     val = str(getattr(args, arg_name))
     if args.D is None:
         args.D = [[arg_key, val]]
-    elif not any(map(lambda _: _[0] == arg_key,
-                 args.D)):
+    elif not any(map(lambda _: _[0] == arg_key, args.D)):
         args.D.append([arg_key, val])
 
 
@@ -97,13 +129,14 @@ def generate_input_splits(uri, n_mappers, images):
 def run_map_job(args, unknown_args, images):
     logger = logging.getLogger(args.job_name)
     logger.setLevel(args.log_level)
-    uri = os.path.join(args.input, '__' + uuid.uuid4().hex)
+    uri = os.path.join(args.input, '_' + uuid.uuid4().hex)
     logger.debug("saving input splits to: %s", uri)
     generate_input_splits(uri, args.num_maps, images)
     args.D.append([PYDOOP_EXTERNALSPLITS_URI_KEY, uri])
     submitter = PydoopSubmitter()
     submitter.set_args(args, [] if unknown_args is None else unknown_args)
     submitter.run()
+    hdfs.rmr(uri)
     RETVALS.put_nowait(0)
 
 
@@ -116,7 +149,7 @@ def main(argv=None):
 
     parser = make_parser()
     args, unknown_args = parser.parse_known_args(argv)
-    args.job_name = 'bworker'
+    args.job_name = 'genbnecks'
     args.module = 'bworker'
     args.upload_file_to_cache = ['bworker.py']
     args.python_zip = [zip_fn]
@@ -129,9 +162,9 @@ def main(argv=None):
         sys.exit("ERROR: unknown architecture: {}".format(args.architecture))
 
     LOGGER.setLevel(args.log_level)
-    categories = get_categories_data(args.input)
-    LOGGER.info("%d categories, %d total images",
-                len(categories), sum(map(len, categories.values())))
+    img_map = map_input_files(args.input)
+    LOGGER.info("%d classes, %d total images",
+                len(img_map), sum(map(len, img_map.values())))
     graph_path = 'graph-{}.pb'.format(uuid.uuid4().hex)
     prepare_and_save_graph(m, graph_path)
     add_D_arg(args, 'num_maps', NUM_MAPS_KEY)
@@ -140,21 +173,20 @@ def main(argv=None):
     args.num_reducers = 0
 
     hdfs.mkdir(args.output)
-    procs = []
-    for name in categories:
+    threads = []
+    for cls, img_list in img_map.items():
         nargs = deepcopy(args)
-        nargs.job_name += '-' + name
-        nargs.output = os.path.join(nargs.output, name)
-        p = Thread(target=run_map_job,
-                   args=[nargs, unknown_args, categories[name]])
-        procs.append(p)
-    for p in procs:
-        p.start()
-    for p in procs:
-        p.join()
+        nargs.job_name += '-' + cls
+        nargs.output = os.path.join(nargs.output, cls)
+        t = Thread(target=run_map_job, args=[nargs, unknown_args, img_list])
+        threads.append(t)
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
 
     shutil.rmtree(wd)
-    if RETVALS.qsize() < len(procs):
+    if RETVALS.qsize() < len(threads):
         sys.exit("ERROR: one or more workers failed")
 
 

@@ -28,8 +28,10 @@ pushd "${this_dir}"
 img_dir="flower_photos"
 bneck_dir="bottlenecks"
 img_url="http://download.tensorflow.org/example_images/${img_dir}.tgz"
-[ -d "${img_dir}" ] || curl "${img_url}" | tar xz
-[ -n "${DEBUG:-}" ] && downsample "${img_dir}"
+if [ ! -d "${img_dir}" ]; then
+    curl "${img_url}" | tar xz
+    [ -n "${DEBUG:-}" ] && downsample "${img_dir}"
+fi
 ensure_dfs_home
 ${HDFS} dfs -test -d "${img_dir}" || ${HADOOP} distcp -atomic "file://${PWD}/${img_dir}" "${img_dir}"
 ${HDFS} dfs -rm -r -f "${bneck_dir}"
