@@ -49,18 +49,14 @@ def get_model_graph(model):
     shutil.rmtree(tempd)
 
 
-def load_graph(path, return_elements):
+def load_graph(path):
     with hdfs.open(path, 'rb') as f:
         serialized_graph_def = f.read()
+    graph_def = tf.GraphDef()
+    graph_def.ParseFromString(serialized_graph_def)
     with tf.Graph().as_default() as graph:
-        graph_def = tf.GraphDef()
-        graph_def.ParseFromString(serialized_graph_def)
-        elements = tf.import_graph_def(
-            graph_def,
-            name='',  # disable default 'import' prefix
-            return_elements=return_elements
-        )
-    return graph, elements
+        tf.import_graph_def(graph_def, name='')
+    return graph
 
 
 def save_graph(graph, path):
@@ -70,60 +66,49 @@ def save_graph(graph, path):
     hdfs.dump(serialized_graph_def, path)
 
 
+def add_jpeg_decoding(model, graph):
+    """\
+    Set up the JPEG decoding sub-graph.
+    """
+    m = model
+    with tf.Session(graph=graph):
+        jpeg_data = tf.placeholder(tf.string, name=m['jpg_input'])
+        dimage = tf.image.decode_jpeg(jpeg_data, channels=m['input_depth'])
+        dimage_as_float = tf.cast(dimage, dtype=tf.float32)
+        dimage4d = tf.expand_dims(dimage_as_float, 0)
+        resize_shape = tf.stack([m['input_height'], m['input_width']])
+        resize_shape_as_int = tf.cast(resize_shape, dtype=tf.int32)
+        resized_image = tf.image.resize_bilinear(dimage4d, resize_shape_as_int)
+        offset_image = tf.subtract(resized_image, m['input_mean'])
+        tf.multiply(offset_image, 1.0 / m['input_std'], name=m['mul_image'])
+    return graph
+
+
 class BottleneckProjector(object):
 
-    @classmethod
-    def create_graph(cls, model):
-        """\
-        Create a new (disjoint) graph that contains: a JPEG to
-        normalized data conversion; and a graph constructed by cutting
-        at the bottleneck an existing, pre-trained network.
-        """
-        def add_jpeg_decoding():
-            m = model
-            jpeg_data = tf.placeholder(tf.string, name=m['jpg_input'])
-            dimage = tf.image.decode_jpeg(jpeg_data, channels=m['input_depth'])
-            dimage_as_float = tf.cast(dimage, dtype=tf.float32)
-            dimage_4d = tf.expand_dims(dimage_as_float, 0)
-            resize_shape = tf.stack([m['input_height'], m['input_width']])
-            resize_shape_as_int = tf.cast(resize_shape, dtype=tf.int32)
-            resized_image = tf.image.resize_bilinear(dimage_4d,
-                                                     resize_shape_as_int)
-            offset_image = tf.subtract(resized_image, m['input_mean'])
-            tf.multiply(offset_image, 1.0 / m['input_std'],
-                        name=m['mul_image'])
-
-        path = model['path']
-        bneck_name = model['bottleneck_tensor_name']
-        input_name = model['resized_input_tensor_name']
-        graph, elements = load_graph(path, [bneck_name, input_name])
-        with tf.Session(graph=graph):
-            add_jpeg_decoding()
-        return graph
-
     def __init__(self, model):
-        self.model = model
-        graph, (input_jpeg, mul_image, input_tensor, bneck_tensor) = \
-            load_graph(model['path'], [model[x]
-                                       for x in ['jpg_input_tensor_name',
-                                                 'mul_image_tensor_name',
-                                                 'resized_input_tensor_name',
-                                                 'bottleneck_tensor_name']])
-        self.graph = graph
-        self.input_jpeg = input_jpeg
-        self.mul_image = mul_image
-        self.resized_input_tensor = input_tensor
-        self.bneck_tensor = bneck_tensor
+        self.graph = load_graph(model['prep_path'])
+        self.jpg_input = self.graph.get_tensor_by_name(
+            model['jpg_input_tensor_name']
+        )
+        self.mul_image = self.graph.get_tensor_by_name(
+            model['mul_image_tensor_name']
+        )
+        self.bottleneck_tensor = self.graph.get_tensor_by_name(
+            model['bottleneck_tensor_name']
+        )
+        self.resized_input_tensor = self.graph.get_tensor_by_name(
+            model['resized_input_tensor_name']
+        )
 
     def project(self, image_path):
         with hdfs.open(image_path, 'rb') as f:
             jpeg_data = f.read()
         with tf.Session(graph=self.graph) as s:
-            m_idat = s.run(self.mul_image,
-                           {self.input_jpeg: jpeg_data})
-            b_val = s.run(self.bneck_tensor,
-                          {self.resized_input_tensor: m_idat})
-        return np.squeeze(b_val)
+            resized_input = s.run(self.mul_image, {self.jpg_input: jpeg_data})
+            bottleneck = s.run(self.bottleneck_tensor,
+                               {self.resized_input_tensor: resized_input})
+        return np.squeeze(bottleneck)
 
 
 def variable_summaries(var):

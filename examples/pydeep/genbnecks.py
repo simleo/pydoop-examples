@@ -55,9 +55,10 @@ from pydoop.app.submit import (
 from pydoop.utils.serialize import OpaqueInputSplit, write_opaques
 from pydoop import hdfs
 
-from pydeep.tflow import BottleneckProjector, get_model_graph, save_graph
-from pydeep.models import model
-from pydeep.keys import GRAPH_PATH_KEY, GRAPH_ARCH_KEY
+from pydeep.models import get_model_info, DEFAULT as DEFAULT_ARCHITECTURE
+from pydeep.common import GRAPH_ARCH_KEY
+
+from graph_setup import get_graph
 
 
 LOGGER = logging.getLogger("genbnecks")
@@ -65,7 +66,6 @@ RETVALS = Queue()
 PACKAGE = "pydeep"
 
 DEFAULT_NUM_MAPS = 10
-DEFAULT_ARCHITECTURE = 'inception_v3'
 NUM_MAPS_KEY = 'mapreduce.job.maps'
 # FIXME this should be from pydoop.utils.serialize
 PYDOOP_EXTERNALSPLITS_URI_KEY = 'pydoop.mapreduce.pipes.externalsplits.uri'
@@ -109,15 +109,6 @@ def add_D_arg(args, arg_name, arg_key):
         args.D.append([arg_key, val])
 
 
-def prepare_and_save_graph(model, graph_path):
-    if not hdfs.path.exists(model['path']):
-        get_model_graph(model)
-    LOGGER.info("creating graph")
-    graph = BottleneckProjector.create_graph(model)
-    LOGGER.info("saving graph to %s", graph_path)
-    save_graph(graph, graph_path)
-
-
 def generate_input_splits(uri, n_mappers, images):
     groups = [[] for _ in range(n_mappers)]
     for i, img in enumerate(images):
@@ -156,20 +147,15 @@ def main(argv=None):
     args.do_not_use_java_record_reader = True
     args.do_not_use_java_record_writer = True
 
-    try:
-        m = model[args.architecture]
-    except KeyError:
-        sys.exit("ERROR: unknown architecture: {}".format(args.architecture))
-
     LOGGER.setLevel(args.log_level)
+    model = get_model_info(args.architecture)
+    get_graph(model, log_level=args.log_level)
+
     img_map = map_input_files(args.input)
     LOGGER.info("%d classes, %d total images",
                 len(img_map), sum(map(len, img_map.values())))
-    graph_path = 'graph-{}.pb'.format(uuid.uuid4().hex)
-    prepare_and_save_graph(m, graph_path)
     add_D_arg(args, 'num_maps', NUM_MAPS_KEY)
     add_D_arg(args, 'architecture', GRAPH_ARCH_KEY)
-    args.D.append([GRAPH_PATH_KEY, graph_path])
     args.num_reducers = 0
 
     hdfs.mkdir(args.output)

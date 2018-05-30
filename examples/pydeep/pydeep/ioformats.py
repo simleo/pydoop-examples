@@ -14,8 +14,8 @@ import pydoop.mapreduce.api as api
 import pydoop.hdfs as hdfs
 from pydoop.utils.serialize import OpaqueInputSplit
 
-from .keys import GRAPH_ARCH_KEY
-from .models import model
+from .common import GRAPH_ARCH_KEY
+from .models import get_model_info
 
 
 logging.basicConfig()
@@ -34,9 +34,6 @@ class SamplesReader(api.RecordReader):
         self.paths = self.isplit.payload
         self.n_paths = len(self.paths)
 
-    def close(self):
-        pass
-
     def next(self):
         try:
             return 1, self.paths.pop()
@@ -48,26 +45,15 @@ class SamplesReader(api.RecordReader):
 
 
 class BottleneckProjectionsWriter(api.RecordWriter):
-    """Write out the bottleneck projection of images as binary records.
-    The records have the structure <4 bytes integer><n floats>, where
-    the first is the image label code, while the second is the result of
-    the bottleneck projection.
+    """\
+    Write out each bottleneck as a raw binary dump.
     """
     def __init__(self, context):
         super(BottleneckProjectionsWriter, self).__init__(context)
         self.logger = LOGGER.getChild("BottleneckProjectionsWriter")
-        jc = context.job_conf
-        hdfs_user = jc.get("pydoop.hdfs.user", None)
-        self.file = hdfs.open(self.get_output_filename(jc), "wb",
-                              user=hdfs_user)
-
-    # FIXME - can we push this method to the parent class?
-    def get_output_filename(self, jc):
-        part = jc.get_int("mapred.task.partition")
-        out_dir = jc["mapred.work.output.dir"]
-        self.logger.debug("part: %d", part)
-        self.logger.debug("outdir: %s", out_dir)
-        return "%s/part-%05d" % (out_dir, part)
+        out_path = context.get_default_work_file()
+        hdfs_user = context.job_conf.get("pydoop.hdfs.user", None)
+        self.file = hdfs.open(out_path, "wb", user=hdfs_user)
 
     def close(self):
         self.logger.debug("closing open handles")
@@ -85,11 +71,11 @@ class BottleneckProjectionsReader(api.RecordReader):
     def __init__(self, context):
         super(BottleneckProjectionsReader, self).__init__(context)
         self.logger = LOGGER.getChild("BottleneckProjectionsReader")
-        self.logger.debug('started')
-        self.isplit = OpaqueInputSplit().read_buffer(context.input_split)
+        raw_split = context.get_input_split(raw=True)
+        self.isplit = OpaqueInputSplit().read(io.BytesIO(raw_split))
         jc = context.job_conf
-        m = model[jc[GRAPH_ARCH_KEY]]
-        self.bottleneck_tensor_size = m['bottleneck_tensor_size']
+        model = get_model_info(jc[GRAPH_ARCH_KEY])
+        self.bottleneck_tensor_size = model['bottleneck_tensor_size']
         self.record_length = 4 * self.bottleneck_tensor_size
         # now we need to manage creating batches from multiple files
         # remainder = self.isplit.offset % self.record_length
