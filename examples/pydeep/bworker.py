@@ -11,8 +11,8 @@ import pydoop.mapreduce.pipes as pp
 from pydeep.ioformats import SamplesReader as Reader
 from pydeep.ioformats import BottleneckProjectionsWriter as Writer
 from pydeep.tflow import BottleneckProjector
-from pydeep.models import get_model_info
 from pydeep.common import GRAPH_ARCH_KEY
+import pydeep.models as models
 
 
 class Mapper(api.Mapper):
@@ -20,7 +20,8 @@ class Mapper(api.Mapper):
     def __init__(self, context):
         super(Mapper, self).__init__(context)
         jc = context.job_conf
-        model = get_model_info(jc[GRAPH_ARCH_KEY])
+        model = models.get_model_info(jc[GRAPH_ARCH_KEY])
+        model = models.load(models.get_info_path(model["prep_path"]))
         self.projector = BottleneckProjector(model)
 
     def map(self, context):

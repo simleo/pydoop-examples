@@ -72,7 +72,7 @@ def add_jpeg_decoding(model, graph):
     """
     m = model
     with tf.Session(graph=graph):
-        jpeg_data = tf.placeholder(tf.string, name=m['jpg_input'])
+        jpeg_data = tf.placeholder(tf.string, name='jpeg_data')
         dimage = tf.image.decode_jpeg(jpeg_data, channels=m['input_depth'])
         dimage_as_float = tf.cast(dimage, dtype=tf.float32)
         dimage4d = tf.expand_dims(dimage_as_float, 0)
@@ -80,8 +80,10 @@ def add_jpeg_decoding(model, graph):
         resize_shape_as_int = tf.cast(resize_shape, dtype=tf.int32)
         resized_image = tf.image.resize_bilinear(dimage4d, resize_shape_as_int)
         offset_image = tf.subtract(resized_image, m['input_mean'])
-        tf.multiply(offset_image, 1.0 / m['input_std'], name=m['mul_image'])
-    return graph
+        mul_image = tf.multiply(
+            offset_image, 1.0 / m['input_std'], name='mul_image'
+        )
+    return jpeg_data, mul_image
 
 
 class BottleneckProjector(object):

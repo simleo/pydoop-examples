@@ -11,7 +11,7 @@ import sys
 from pydoop import hdfs
 
 import pydeep.tflow as tflow
-from pydeep.models import get_model_info, DEFAULT as DEFAULT_ARCH
+import pydeep.models as models
 from pydeep.common import LOG_LEVELS
 
 
@@ -29,16 +29,21 @@ def get_graph(model, log_level="INFO"):
     else:
         logger.info("downloading original model graph")
         tflow.get_model_graph(model)
+        models.dump(model, models.get_info_path(model["path"]))
     logger.info("adding JPEG decoding")
     graph = tflow.load_graph(model["path"])
-    tflow.add_jpeg_decoding(model, graph)
+    jpg_input, mul_image = tflow.add_jpeg_decoding(model, graph)
+    model['jpg_input_tensor_name'] = jpg_input.name
+    model['mul_image_tensor_name'] = mul_image.name
+    models.dump(model, models.get_info_path(model["prep_path"]))
     logger.info("saving graph to %s" % model["prep_path"])
     tflow.save_graph(graph, model["prep_path"])
 
 
 def make_parser():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--architecture", metavar="STR", default=DEFAULT_ARCH)
+    parser.add_argument("--architecture", metavar="STR",
+                        default=models.DEFAULT)
     parser.add_argument("--log-level", metavar="|".join(LOG_LEVELS),
                         choices=LOG_LEVELS, default="INFO")
     return parser
@@ -48,7 +53,7 @@ def main(argv=sys.argv):
     os.chdir(os.path.dirname(os.path.abspath(__file__)))
     parser = make_parser()
     args = parser.parse_args(argv[1:])
-    model = get_model_info(args.architecture)
+    model = models.get_model_info(args.architecture)
     return get_graph(model, log_level=args.log_level)
 
 
