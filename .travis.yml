@@ -3,6 +3,10 @@ language: python
 python:
  - "3.6"
 
+env:
+  - EXAMPLE=pydeep
+  - EXAMPLE=terasort
+
 sudo: required
 
 services: docker
@@ -19,6 +23,5 @@ script:
  - docker build --build-arg HADOOP_MAJOR_VERSION=3 -t crs4/pydoop-examples .
  - docker run --rm --name pydoop -d crs4/pydoop-examples
  - "docker exec pydoop bash -c 'while : ; do jps | grep DataNode && break; done'"
- - "docker exec -e PYTHON=python3 -e DEBUG=true pydoop bash -c 'source /etc/profile && cd /examples/terasort && ./run'"
- - "docker exec -e PYTHON=python3 -e DEBUG=true pydoop bash -c 'source /etc/profile && cd /examples/pydeep && ./run'"
+ - DEBUG=1 ./.travis/check ${EXAMPLE}
  - docker stop pydoop
