@@ -6,6 +6,10 @@ this="${BASH_SOURCE-$0}"
 this_dir=$(cd -P -- "$(dirname -- "${this}")" && pwd -P)
 . "${this_dir}/../config.sh"
 
+use_two_classes () {
+    find "${1}" -mindepth 1 -maxdepth 1 -type d | tail -n +3 | xargs rm -rf
+}
+
 downsample () {
     local d=$1
     shopt -q -o xtrace && local reset_x=1
@@ -30,7 +34,10 @@ bneck_dir="bottlenecks"
 img_url="http://download.tensorflow.org/example_images/${img_dir}.tgz"
 if [ ! -d "${img_dir}" ]; then
     curl "${img_url}" | tar xz
-    [ -n "${DEBUG:-}" ] && downsample "${img_dir}"
+    if [ -n "${DEBUG:-}" ]; then
+	use_two_classes "${img_dir}"
+	downsample "${img_dir}"
+    fi
 fi
 ensure_dfs_home
 ${HDFS} dfs -test -d "${img_dir}" || ${HADOOP} distcp -atomic "file://${PWD}/${img_dir}" "${img_dir}"
