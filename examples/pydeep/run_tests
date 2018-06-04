@@ -1,0 +1,14 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+[ -n "${DEBUG:-}" ] && set -x
+this="${BASH_SOURCE-$0}"
+this_dir=$(cd -P -- "$(dirname -- "${this}")" && pwd -P)
+. "${this_dir}/../config.sh"
+
+[ ${PY_VER} -le 2 ] && die "ERROR: Python 3 required"
+
+export PYTHONPATH="${this_dir}:${PYTHONPATH:-}"
+pushd "${this_dir}/test"
+${PYTHON} test_common.py
+popd

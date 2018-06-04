@@ -15,6 +15,6 @@ else
 fi
 
 for e in ${examples}; do
-    cmd="source /etc/profile && cd /examples/${e} && ./run"
+    cmd="source /etc/profile && cd /examples/${e} && ./run_tests && ./run"
     docker exec "${OPTS[@]}" pydoop bash -c "${cmd}"
 done
