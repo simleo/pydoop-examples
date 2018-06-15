@@ -32,9 +32,9 @@ def get_graph(model, log_level="INFO"):
         models.dump(model, models.get_info_path(model["path"]))
     logger.info("adding JPEG decoding")
     graph = tflow.load_graph(model["path"])
-    jpg_input, mul_image = tflow.add_jpeg_decoding(model, graph)
-    model['jpg_input_tensor_name'] = jpg_input.name
-    model['mul_image_tensor_name'] = mul_image.name
+    model = tflow.add_jpeg_decoding(model, graph)
+    bneck_tensor = graph.get_tensor_by_name(model['bottleneck_tensor_name'])
+    model['bottleneck_tensor_dtype'] = bneck_tensor.dtype.name
     models.dump(model, models.get_info_path(model["prep_path"]))
     logger.info("saving graph to %s" % model["prep_path"])
     tflow.save_graph(graph, model["prep_path"])

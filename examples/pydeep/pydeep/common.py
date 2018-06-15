@@ -1,7 +1,14 @@
 import itertools
 
 LOG_LEVELS = 'CRITICAL', 'DEBUG', 'ERROR', 'INFO', 'WARNING'
+LOG_LEVEL_KEY = 'pydeep.log.level'
+
+EVAL_STEP_INTERVAL_KEY = 'tensorflow.eval.step.interval'
+MODEL_EXPORT_DIR_KEY = 'tensorflow.model.export.dir'
 GRAPH_ARCH_KEY = 'tensorflow.graph.architecture'
+NUM_STEPS_KEY = 'tensorflow.train.num.steps'
+TRAIN_BATCH_SIZE_KEY = 'tensorflow.train.batch.size'
+VALIDATION_PERCENT_KEY = 'tensorflow.train.validation.percent'
 
 # The following should be defined in pydoop
 PYDOOP_EXTERNALSPLITS_URI_KEY = 'pydoop.mapreduce.pipes.externalsplits.uri'

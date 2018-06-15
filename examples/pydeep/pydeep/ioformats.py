@@ -7,20 +7,30 @@ An avro implementation would be more elegant, but probably slower.
 
 import io
 import logging
-import struct
+import random
+from collections import defaultdict
 
 import numpy as np
+import tensorflow as tf
 import pydoop.mapreduce.api as api
 import pydoop.hdfs as hdfs
 from pydoop.utils.serialize import OpaqueInputSplit
 
-from .common import GRAPH_ARCH_KEY
-from .models import get_model_info
+from .common import GRAPH_ARCH_KEY, NUM_STEPS_KEY, TRAIN_BATCH_SIZE_KEY
+from .models import get_model_info, load as load_model, get_info_path
 
 
 logging.basicConfig()
 LOGGER = logging.getLogger("pydeep.ioformats")
 LOGGER.setLevel(logging.INFO)
+
+
+class FileCache(defaultdict):
+
+    def __missing__(self, path):
+        f = hdfs.open(path, "rb")
+        self[path] = f
+        return f
 
 
 class SamplesReader(api.RecordReader):
@@ -65,45 +75,50 @@ class BottleneckProjectionsWriter(api.RecordWriter):
 
 
 class BottleneckProjectionsReader(api.RecordReader):
-    """Read binary records representing bottleneck projection of images.
-    BROKEN
-    """
+
     def __init__(self, context):
         super(BottleneckProjectionsReader, self).__init__(context)
         self.logger = LOGGER.getChild("BottleneckProjectionsReader")
         raw_split = context.get_input_split(raw=True)
         self.isplit = OpaqueInputSplit().read(io.BytesIO(raw_split))
+        self.bneck_maps = self.isplit.payload
         jc = context.job_conf
         model = get_model_info(jc[GRAPH_ARCH_KEY])
-        self.bottleneck_tensor_size = model['bottleneck_tensor_size']
-        self.record_length = 4 * self.bottleneck_tensor_size
-        # now we need to manage creating batches from multiple files
-        # remainder = self.isplit.offset % self.record_length
-        # self.bytes_read = 0 if remainder == 0 else (self.record_length -
-        #                                             remainder)
-        # self.file = hdfs.open(self.isplit.filename)
-        # self.file.seek(self.isplit.offset + self.bytes_read)
+        model = load_model(get_info_path(model["pretrain_path"]))
+        self.dtype = tf.as_dtype(model['bottleneck_tensor_dtype'])
+        self.length = self.dtype.size * model['bottleneck_tensor_size']
+        self.n_steps = jc.get_int(NUM_STEPS_KEY)
+        self.batch_size = jc.get_int(TRAIN_BATCH_SIZE_KEY)
+        self.step_count = 0
+        self.fcache = FileCache()
+        self.labels = {d: i for i, d in enumerate(sorted(self.bneck_maps))}
 
     def close(self):
         self.logger.debug("closing open handles")
-        self.file.close()
-        self.file.fs.close()
+        for f in self.fcache.values():
+            f.close()
+        next(self.fcache.values()).fs.close()
 
     def next(self):
-        if self.bytes_read > self.isplit.length:
+        if self.step_count >= self.n_steps:
             raise StopIteration
-        record = self.file.read(self.record_length)
-        if not record:
-            self.logger.debug("StopIteration on eof")
-            raise StopIteration
-        if len(record) < self.record_length:  # broken file?
-            self.logger.warn("StopIteration on bad rec len %d", len(record))
-            raise StopIteration
-        self.bytes_read += self.record_length
-        key = struct.unpack('>I', record[:4])
-        value = np.fromstring(record[4:], dtype=np.float32,
-                              count=self.bottleneck_tensor_size)
-        return (key, value)
+        record = []
+        batch_size, fcache, length = self.batch_size, self.fcache, self.length
+        dtype = self.dtype.as_numpy_dtype
+        n_classes = len(self.bneck_maps)
+        for subd, bneck_positions in self.bneck_maps.items():
+            sample = random.sample(
+                bneck_positions, min(batch_size, len(bneck_positions))
+            )
+            for name, offset in sample:
+                path = "%s/%s" % (subd, name)
+                chunk = fcache[path].pread(offset, length)
+                bneck = np.frombuffer(chunk, dtype)
+                gtruth = np.zeros(n_classes, dtype=np.float32)
+                gtruth[self.labels[subd]] = 1
+                record.append((bneck, gtruth))
+        self.step_count += 1
+        return self.step_count, record
 
     def get_progress(self):
-        return min(float(self.bytes_read) / self.isplit.length, 1.0)
+        return min(self.step_count / self.n_steps, 1.0)

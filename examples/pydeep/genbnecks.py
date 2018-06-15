@@ -98,14 +98,6 @@ def map_input_files(input_dir):
     return img_map
 
 
-def add_D_arg(args, arg_name, arg_key):
-    val = str(getattr(args, arg_name))
-    if args.D is None:
-        args.D = [[arg_key, val]]
-    elif not any(map(lambda _: _[0] == arg_key, args.D)):
-        args.D.append([arg_key, val])
-
-
 def run_map_job(args, unknown_args, images):
     logger = logging.getLogger(args.job_name)
     logger.setLevel(args.log_level)
@@ -114,9 +106,13 @@ def run_map_job(args, unknown_args, images):
     logger.debug("saving input splits to: %s", uri)
     with hdfs.open(uri, 'wb') as f:
         write_opaques([OpaqueInputSplit(1, _) for _ in splits], f)
-    args.D.append([common.PYDOOP_EXTERNALSPLITS_URI_KEY, uri])
     submitter = PydoopSubmitter()
     submitter.set_args(args, [] if unknown_args is None else unknown_args)
+    submitter.properties.update({
+        common.NUM_MAPS_KEY: args.num_maps,
+        common.GRAPH_ARCH_KEY: args.architecture,
+        common.PYDOOP_EXTERNALSPLITS_URI_KEY: uri,
+    })
     submitter.run()
     hdfs.rmr(uri)
     RETVALS.put_nowait(0)
@@ -145,8 +141,6 @@ def main(argv=None):
     img_map = map_input_files(args.input)
     LOGGER.info("%d classes, %d total images",
                 len(img_map), sum(map(len, img_map.values())))
-    add_D_arg(args, 'num_maps', common.NUM_MAPS_KEY)
-    add_D_arg(args, 'architecture', common.GRAPH_ARCH_KEY)
     args.num_reducers = 0
 
     hdfs.mkdir(args.output)

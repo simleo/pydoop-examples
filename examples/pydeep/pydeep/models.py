@@ -13,7 +13,7 @@ INCEPTION_V3 = {
     'filename': 'classify_image_graph_def.pb',
     'path': 'inception_v3/classify_image_graph_def.pb',
     'prep_path': 'inception_v3/prep.pb',
-    'retrained_path': 'inception_v3/retrained.pb',
+    'pretrain_path': 'inception_v3/pretrain.zip',
     'bottleneck_tensor_size': 2048,
     'input_width': 299,
     'input_height': 299,
@@ -22,9 +22,13 @@ INCEPTION_V3 = {
     'input_std': 128,
     'bottleneck_tensor_name': 'pool_3/_reshape:0',
     'resized_input_tensor_name': 'Mul:0',
-    # filled by the initial graph setup step
+    # to be filled by the initial graph setup step
     'jpg_input_tensor_name': None,
     'mul_image_tensor_name': None,
+    'bottleneck_tensor_dtype': None,
+    # to be filled by the step that adds training and evaluation options
+    'train_step_op_name': None,
+    'eval_step_tensor_name': None,
 }
 
 BY_NAME = {
