@@ -31,7 +31,7 @@ export LIBHDFS_OPTS="-Xmx512m"
 pushd "${this_dir}"
 img_dir="flower_photos"
 bneck_dir="bottlenecks"
-train_output="train_output"
+train_output="trained_models"
 img_url="http://download.tensorflow.org/example_images/${img_dir}.tgz"
 if [ ! -d "${img_dir}" ]; then
     curl "${img_url}" | tar xz

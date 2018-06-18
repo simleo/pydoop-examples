@@ -15,6 +15,7 @@ import urllib
 import numpy as np
 import pydoop.hdfs as hdfs
 import tensorflow as tf
+from tensorflow.python.framework import graph_util
 from tensorflow.python.saved_model import tag_constants, signature_constants
 
 
@@ -206,3 +207,19 @@ class Retrainer(object):
                 self.ground_truth_input: ground_truths
             }
         )
+
+    def run_validation_step(self, bottlenecks, ground_truths):
+        return self.session.run(
+            self.eval_step,
+            feed_dict={
+                self.bottleneck_input: bottlenecks,
+                self.ground_truth_input: ground_truths
+            }
+        )
+
+    def dump_output_graph(self, path):
+        out_node_names = ["final_tensor"]  # FIXME
+        out_graph_def = graph_util.convert_variables_to_constants(
+            self.session, self.session.graph.as_graph_def(), out_node_names
+        )
+        hdfs.dump(out_graph_def.SerializeToString(), path)

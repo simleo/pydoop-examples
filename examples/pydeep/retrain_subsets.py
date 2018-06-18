@@ -188,6 +188,7 @@ def main(argv=None):
         common.NUM_STEPS_KEY: args.num_steps,
         common.PYDOOP_EXTERNALSPLITS_URI_KEY: splits_path,
         common.TRAIN_BATCH_SIZE_KEY: args.batch_size,
+        common.VALIDATION_PERCENT_KEY: args.validation_percent,
     })
     cache_model_zip(model["pretrain_path"], submitter.properties)
     submitter.run()
