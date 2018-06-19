@@ -1,21 +1,59 @@
+"""\
+Information on known network architectures.
+"""
+
+import json
+import pydoop.hdfs as hdfs
+
+
 BASE_URL = "http://download.tensorflow.org/models"
 
-model = {
-    'inception_v3': {
-        'path':  'inception_v3/classify_image_graph_def.pb',
-        'url': '%s/image/imagenet/inception-2015-12-05.tgz' % BASE_URL,
-        'filename': 'classify_image_graph_def.pb',
-        'bottleneck_tensor_name': 'pool_3/_reshape:0',
-        'bottleneck_tensor_size': 2048,
-        'jpg_input': 'jpg_input_data',
-        'jpg_input_tensor_name': 'jpg_input_data:0',
-        'mul_image': 'mul_image',
-        'mul_image_tensor_name': 'mul_image:0',
-        'input_width': 299,
-        'input_height': 299,
-        'input_depth': 3,
-        'resized_input_tensor_name': 'Mul:0',
-        'input_mean': 128,
-        'input_std': 128,
-    }
+INCEPTION_V3 = {
+    'url': '%s/image/imagenet/inception-2015-12-05.tgz' % BASE_URL,
+    'filename': 'classify_image_graph_def.pb',
+    'path': 'inception_v3/classify_image_graph_def.pb',
+    'prep_path': 'inception_v3/prep.pb',
+    'pretrain_path': 'inception_v3/pretrain.zip',
+    'bottleneck_tensor_size': 2048,
+    'input_width': 299,
+    'input_height': 299,
+    'input_depth': 3,
+    'input_mean': 128,
+    'input_std': 128,
+    'bottleneck_tensor_name': 'pool_3/_reshape:0',
+    'resized_input_tensor_name': 'Mul:0',
+    # to be filled by the initial graph setup step
+    'jpg_input_tensor_name': None,
+    'mul_image_tensor_name': None,
+    'bottleneck_tensor_dtype': None,
+    # to be filled by the step that adds training and evaluation options
+    'train_step_op_name': None,
+    'eval_step_tensor_name': None,
 }
+
+BY_NAME = {
+    'inception_v3': INCEPTION_V3,
+}
+
+DEFAULT = 'inception_v3'
+
+
+def get_model_info(arch):
+    try:
+        return BY_NAME[arch]
+    except KeyError:
+        raise ValueError("unknown architecture: %s" % arch)
+
+
+def dump(model_info, path):
+    with hdfs.open(path, 'wt') as f:
+        json.dump(model_info, f)
+
+
+def load(path):
+    with hdfs.open(path, 'rt') as f:
+        return json.load(f)
+
+
+def get_info_path(path):
+    return "%s.info" % path.rsplit(".", 1)[0]
