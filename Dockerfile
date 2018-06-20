@@ -6,4 +6,5 @@ COPY examples /examples
 WORKDIR /examples
 
 RUN source /etc/profile && \
+    yum install python36u-tkinter && \
     pip3 install --no-cache-dir --upgrade -r requirements.txt
