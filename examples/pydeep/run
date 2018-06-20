@@ -32,6 +32,7 @@ pushd "${this_dir}"
 img_dir="flower_photos"
 bneck_dir="bottlenecks"
 train_output="trained_models"
+plots_dir="training_plots"
 img_url="http://download.tensorflow.org/example_images/${img_dir}.tgz"
 if [ ! -d "${img_dir}" ]; then
     curl "${img_url}" | tar xz
@@ -45,4 +46,5 @@ ${HDFS} dfs -test -d "${img_dir}" || ${HADOOP} distcp -atomic "file://${PWD}/${i
 ${HDFS} dfs -rm -r -f "${bneck_dir}" "${train_output}"
 ${PYTHON} genbnecks.py "${OPTS[@]}" "${img_dir}" "${bneck_dir}"
 ${PYTHON} retrain_subsets.py "${OPTS[@]}" --num-steps 400 "${bneck_dir}" "${train_output}"
+${PYTHON} plot_training.py "${train_output}" "${plots_dir}"
 popd
