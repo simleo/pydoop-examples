@@ -23,6 +23,10 @@ def balanced_split(seq, N):
 
     Returns an iterator through the groups.
     """
+    if N < 1:
+        raise ValueError("number of groups must be strictly positive")
+    if N > len(seq):
+        raise ValueError("not enough elements in sequence")
     q, r = divmod(len(seq), N)
     lengths = r * [q + 1] + (N - r) * [q]
     for end, l in zip(itertools.accumulate(lengths), lengths):
