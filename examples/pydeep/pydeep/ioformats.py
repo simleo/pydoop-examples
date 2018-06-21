@@ -5,6 +5,7 @@ The current implementation is somewhat minimalistic.
 An avro implementation would be more elegant, but probably slower.
 """
 
+from hashlib import md5
 import io
 import logging
 import random
@@ -24,6 +25,8 @@ logging.basicConfig()
 LOGGER = logging.getLogger("pydeep.ioformats")
 LOGGER.setLevel(logging.INFO)
 
+CHECKSUM_LEN = md5().digest_size
+
 
 class FileCache(defaultdict):
 
@@ -34,7 +37,10 @@ class FileCache(defaultdict):
 
 
 class SamplesReader(api.RecordReader):
-
+    """\
+    For each HDFS path in the input split, read its content C and emit an
+    (md5(C), C) record.
+    """
     def __init__(self, context):
         super(SamplesReader, self).__init__(context)
         self.logger = LOGGER.getChild("SamplesReader")
@@ -43,12 +49,19 @@ class SamplesReader(api.RecordReader):
         self.isplit = OpaqueInputSplit().read(io.BytesIO(raw_split))
         self.paths = self.isplit.payload
         self.n_paths = len(self.paths)
+        self.fs = hdfs.hdfs()
+
+    def close(self):
+        self.fs.close()
 
     def next(self):
         try:
-            return 1, self.paths.pop()
+            path = self.paths.pop()
         except IndexError:
             raise StopIteration
+        with self.fs.open_file(path, 'rb') as f:
+            data = f.read()
+        return md5(data).digest(), data
 
     def get_progress(self):
         return float(len(self.paths) / self.n_paths)
@@ -56,7 +69,9 @@ class SamplesReader(api.RecordReader):
 
 class BottleneckProjectionsWriter(api.RecordWriter):
     """\
-    Write out each bottleneck as a raw binary dump.
+    Write out a binary record for each bottleneck. Expects a bytes object (md5
+    digest of the JPEG data) as the key and a numpy array (the bottleneck) as
+    the value.
     """
     def __init__(self, context):
         super(BottleneckProjectionsWriter, self).__init__(context)
@@ -70,8 +85,8 @@ class BottleneckProjectionsWriter(api.RecordWriter):
         self.file.close()
         self.file.fs.close()
 
-    def emit(self, _, value):
-        self.file.write(value.tobytes())
+    def emit(self, key, value):
+        self.file.write(key + value.tobytes())
 
 
 class BottleneckProjectionsReader(api.RecordReader):
@@ -112,7 +127,7 @@ class BottleneckProjectionsReader(api.RecordReader):
             )
             for name, offset in sample:
                 path = "%s/%s" % (subd, name)
-                chunk = fcache[path].pread(offset, length)
+                chunk = fcache[path].pread(offset + CHECKSUM_LEN, length)
                 bneck = np.frombuffer(chunk, dtype)
                 gtruth = np.zeros(n_classes, dtype=np.float32)
                 gtruth[self.labels[subd]] = 1

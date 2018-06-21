@@ -106,9 +106,7 @@ class BottleneckProjector(object):
             model['resized_input_tensor_name']
         )
 
-    def project(self, image_path):
-        with hdfs.open(image_path, 'rb') as f:
-            jpeg_data = f.read()
+    def project(self, jpeg_data):
         with tf.Session(graph=self.graph) as s:
             resized_input = s.run(self.mul_image, {self.jpg_input: jpeg_data})
             bottleneck = s.run(self.bottleneck_tensor,

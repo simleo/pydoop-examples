@@ -15,6 +15,7 @@ import shutil
 import sys
 import tempfile
 import uuid
+from hashlib import md5
 from operator import itemgetter
 
 import tensorflow as tf
@@ -50,7 +51,7 @@ def make_parser():
     return parser
 
 
-def map_bnecks_to_files(input_dir, bneck_size):
+def map_bnecks_to_files(input_dir, record_size):
     """\
     For each input subdir (corresponding to an image class), build the full
     list of (filename, offset) pair where each bottleneck dump can be
@@ -81,8 +82,8 @@ def map_bnecks_to_files(input_dir, bneck_size):
         positions = []
         for s in stats:
             bname = hdfs.path.basename(s["name"])
-            assert s["size"] % bneck_size == 0
-            for i in range(0, s["size"], bneck_size):
+            assert s["size"] % record_size == 0
+            for i in range(0, s["size"], record_size):
                 positions.append((bname, i))
         m[subd] = positions
     return m
@@ -170,7 +171,8 @@ def main(argv=None):
     model = models.load(models.get_info_path(model["prep_path"]))
     dtype = tf.as_dtype(model['bottleneck_tensor_dtype'])
     bneck_size = dtype.size * model['bottleneck_tensor_size']
-    bneck_map = map_bnecks_to_files(args.input, bneck_size)
+    record_size = md5().digest_size + bneck_size
+    bneck_map = map_bnecks_to_files(args.input, record_size)
     LOGGER.info("%d subdirs, %r bottlenecks" %
                 (len(bneck_map), [len(_) for _ in bneck_map.values()]))
     update_graph(
