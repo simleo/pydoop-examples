@@ -41,21 +41,22 @@ class Mapper(api.Mapper):
 
     def map(self, context):
         i = context.key
-        LOGGER.debug('step #: %d', i)
         split_i = round(len(context.value) * self.validation_percent / 100)
         val_set, train_set = context.value[:split_i], context.value[split_i:]
+        LOGGER.debug('step %d: train size = %d, val size = %d',
+                     i, len(train_set), len(val_set))
         train_bnecks, train_gtruths = zip(*train_set)
         val_bnecks, val_gtruths = zip(*val_set)
         self.retrainer.run_train_step(train_bnecks, train_gtruths)
         if (i % self.eval_step_interval == 0) or (i + 1 >= self.n_steps):
             train_accuracy, cross_entropy = self.retrainer.run_eval_step(
                 train_bnecks, train_gtruths)
-            LOGGER.info('step %d: train accuracy = %f%%, cross entropy = %f' %
-                        (i, 100 * train_accuracy, cross_entropy))
+            LOGGER.info('step %d: train accuracy = %f%%, cross entropy = %f',
+                        i, 100 * train_accuracy, cross_entropy)
             val_accuracy = self.retrainer.run_validation_step(
                 val_bnecks, val_gtruths)
-            LOGGER.info('step %d: validation accuracy = %f%%' %
-                        (i, 100 * val_accuracy))
+            LOGGER.info('step %d: validation accuracy = %f%%',
+                        i, 100 * val_accuracy)
             context.emit(i, "%s\t%s\t%s" %
                          (cross_entropy, train_accuracy, val_accuracy))
 
