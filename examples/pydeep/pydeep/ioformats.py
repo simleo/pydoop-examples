@@ -36,15 +36,15 @@ class FileCache(defaultdict):
         return f
 
 
-class SamplesReader(api.RecordReader):
+class WholeFileReader(api.RecordReader):
     """\
-    For each HDFS path in the input split, read its content C and emit an
-    (md5(C), C) record.
+    Assumes input split = list of HDFS file paths. Reads the *whole* content C
+    of each file (the user is responsible for ensuring this fits in memory)
+    and emits a (path, C) record.
     """
     def __init__(self, context):
-        super(SamplesReader, self).__init__(context)
-        self.logger = LOGGER.getChild("SamplesReader")
-        self.logger.debug('started')
+        super(WholeFileReader, self).__init__(context)
+        self.logger = LOGGER.getChild("WholeFileReader")
         raw_split = context.get_input_split(raw=True)
         self.isplit = OpaqueInputSplit().read(io.BytesIO(raw_split))
         self.paths = self.isplit.payload
@@ -59,12 +59,25 @@ class SamplesReader(api.RecordReader):
             path = self.paths.pop()
         except IndexError:
             raise StopIteration
+        return self.path_to_kv(path)
+
+    def path_to_kv(self, path):
         with self.fs.open_file(path, 'rb') as f:
             data = f.read()
-        return md5(data).digest(), data
+        return path, data
 
     def get_progress(self):
         return float(len(self.paths) / self.n_paths)
+
+
+class SamplesReader(WholeFileReader):
+    """\
+    For each HDFS path in the input split, read its content C and emit an
+    (md5(C), C) record.
+    """
+    def path_to_kv(self, path):
+        _, data = super(SamplesReader, self).path_to_kv(path)
+        return md5(data).digest(), data
 
 
 class BottleneckProjectionsWriter(api.RecordWriter):
