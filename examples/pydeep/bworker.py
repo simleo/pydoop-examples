@@ -21,8 +21,10 @@ class Mapper(api.Mapper):
         super(Mapper, self).__init__(context)
         jc = context.job_conf
         model = models.get_model_info(jc[GRAPH_ARCH_KEY])
-        model = models.load(models.get_info_path(model["prep_path"]))
         self.projector = BottleneckProjector(model)
+
+    def close(self):
+        self.projector.close_session()
 
     def map(self, context):
         # Here, if needed, we could also generate many derived

@@ -5,7 +5,6 @@ Input key: training step index
 Input value: input data for this step as a [(bottleneck, ground_truth)] list
 """
 
-import os
 import logging
 
 import pydoop.mapreduce.api as api
@@ -28,11 +27,11 @@ class Mapper(api.Mapper):
         LOGGER.setLevel(jc[common.LOG_LEVEL_KEY])
         self.n_steps = jc.get_int(common.NUM_STEPS_KEY)
         self.eval_step_interval = jc.get_int(common.EVAL_STEP_INTERVAL_KEY)
+        learning_rate = jc.get_float(common.LEARNING_RATE_KEY)
+        n_classes = jc.get_int(common.NUM_CLASSES_KEY)
         self.validation_percent = jc.get_int(common.VALIDATION_PERCENT_KEY)
         model = models.get_model_info(jc[common.GRAPH_ARCH_KEY])
-        model = models.load(models.get_info_path(model["pretrain_path"]))
-        export_dir = os.path.abspath(jc[common.MODEL_EXPORT_DIR_KEY])
-        self.retrainer = tflow.Retrainer(model, export_dir)
+        self.retrainer = tflow.Retrainer(model, n_classes, learning_rate)
         self.out_path = "%s.pb" % context.get_default_work_file()
 
     def close(self):

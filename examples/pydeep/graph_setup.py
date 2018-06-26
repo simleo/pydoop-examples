@@ -10,7 +10,6 @@ import sys
 
 from pydoop import hdfs
 
-import pydeep.tflow as tflow
 import pydeep.models as models
 from pydeep.common import LOG_LEVELS
 
@@ -21,23 +20,16 @@ logging.basicConfig()
 def get_graph(model, log_level="INFO"):
     logger = logging.getLogger("graph_setup")
     logger.setLevel(log_level)
-    if hdfs.path.exists(model["prep_path"]):
-        logger.info("%s already exists, nothing to do" % model["prep_path"])
+    if hdfs.path.exists(model.prep_path):
+        logger.info("%s already exists, nothing to do", model.prep_path)
         return
-    if hdfs.path.exists(model["path"]):
-        logger.info("found original model graph at %s" % model["path"])
+    if hdfs.path.exists(model.path):
+        logger.info("found original model graph at %s", model.path)
     else:
         logger.info("downloading original model graph")
-        tflow.get_model_graph(model)
-        models.dump(model, models.get_info_path(model["path"]))
-    logger.info("adding JPEG decoding")
-    graph = tflow.load_graph(model["path"])
-    model = tflow.add_jpeg_decoding(model, graph)
-    bneck_tensor = graph.get_tensor_by_name(model['bottleneck_tensor_name'])
-    model['bottleneck_tensor_dtype'] = bneck_tensor.dtype.name
-    models.dump(model, models.get_info_path(model["prep_path"]))
-    logger.info("saving graph to %s" % model["prep_path"])
-    tflow.save_graph(graph, model["prep_path"])
+        model.download()
+    logger.info("adding JPEG decoding and storing to %s", model.prep_path)
+    model.add_jpeg_decoding()
 
 
 def make_parser():

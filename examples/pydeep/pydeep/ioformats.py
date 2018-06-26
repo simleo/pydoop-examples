@@ -12,13 +12,12 @@ import random
 from collections import defaultdict
 
 import numpy as np
-import tensorflow as tf
 import pydoop.mapreduce.api as api
 import pydoop.hdfs as hdfs
 from pydoop.utils.serialize import OpaqueInputSplit
 
-from .common import GRAPH_ARCH_KEY, NUM_STEPS_KEY, TRAIN_BATCH_SIZE_KEY
-from .models import get_model_info, load as load_model, get_info_path
+import pydeep.common as common
+import pydeep.models as models
 
 
 logging.basicConfig()
@@ -111,12 +110,15 @@ class BottleneckProjectionsReader(api.RecordReader):
         self.isplit = OpaqueInputSplit().read(io.BytesIO(raw_split))
         self.bneck_maps = self.isplit.payload
         jc = context.job_conf
-        model = get_model_info(jc[GRAPH_ARCH_KEY])
-        model = load_model(get_info_path(model["pretrain_path"]))
-        self.dtype = tf.as_dtype(model['bottleneck_tensor_dtype'])
-        self.length = self.dtype.size * model['bottleneck_tensor_size']
-        self.n_steps = jc.get_int(NUM_STEPS_KEY)
-        self.batch_size = jc.get_int(TRAIN_BATCH_SIZE_KEY)
+        model = models.get_model_info(jc[common.GRAPH_ARCH_KEY])
+        graph = model.load_prep()
+        bneck_tensor = graph.get_tensor_by_name(model.graph[models.BNECK_NAME])
+        self.length = bneck_tensor.dtype.size * bneck_tensor.shape[1].value
+        self.dtype = bneck_tensor.dtype.as_numpy_dtype
+        self.n_steps = jc.get_int(common.NUM_STEPS_KEY)
+        self.batch_size = jc.get_int(common.TRAIN_BATCH_SIZE_KEY)
+        self.n_classes = jc.get_int(common.NUM_CLASSES_KEY)
+        assert len(self.bneck_maps) == self.n_classes
         self.step_count = 0
         self.fcache = FileCache()
         self.labels = {d: i for i, d in enumerate(sorted(self.bneck_maps))}
@@ -130,10 +132,14 @@ class BottleneckProjectionsReader(api.RecordReader):
     def next(self):
         if self.step_count >= self.n_steps:
             raise StopIteration
+        batch_size, fcache, length, dtype, n_classes = (
+            self.batch_size,
+            self.fcache,
+            self.length,
+            self.dtype,
+            self.n_classes
+        )
         record = []
-        batch_size, fcache, length = self.batch_size, self.fcache, self.length
-        dtype = self.dtype.as_numpy_dtype
-        n_classes = len(self.bneck_maps)
         for subd, bneck_positions in self.bneck_maps.items():
             sample = random.sample(
                 bneck_positions, min(batch_size, len(bneck_positions))
