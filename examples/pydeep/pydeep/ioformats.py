@@ -112,7 +112,7 @@ class BottleneckProjectionsReader(api.RecordReader):
         jc = context.job_conf
         model = models.get_model_info(jc[common.GRAPH_ARCH_KEY])
         graph = model.load_prep()
-        bneck_tensor = graph.get_tensor_by_name(model.graph[models.BNECK_NAME])
+        bneck_tensor = model.get_bottleneck(graph)
         self.length = bneck_tensor.dtype.size * bneck_tensor.shape[1].value
         self.dtype = bneck_tensor.dtype.as_numpy_dtype
         self.n_steps = jc.get_int(common.NUM_STEPS_KEY)

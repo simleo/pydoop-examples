@@ -117,7 +117,7 @@ def main(argv=None):
 
     model = models.get_model_info(args.architecture)
     graph = model.load_prep()
-    bneck_tensor = graph.get_tensor_by_name(model.graph[models.BNECK_NAME])
+    bneck_tensor = model.get_bottleneck(graph)
     bneck_size = bneck_tensor.dtype.size * bneck_tensor.shape[1].value
     record_size = md5().digest_size + bneck_size
     bneck_map = map_bnecks_to_files(args.input, record_size)

@@ -23,17 +23,15 @@ MOBILENET_V1 = re.compile(r"^mobilenet_([0-9.]+)_(\d+)(.*)$")
 MOBILENET_V1_VERSIONS = frozenset(("0.25", "0.50", "0.75", "1.0"))
 MOBILENET_V1_INPUT_SIZES = frozenset(("128", "160", "192", "224"))
 
-BNECK_NAME = "bottleneck_name"
-BNECK_SIZE = "bottleneck_size"
-RESIZED_INPUT_NAME = "resized_input_name"
 JPG_INPUT_NAME = "jpg_input_name"
 MUL_IMAGE_NAME = "mul_image_name"
 
 
 Input = namedtuple("Input", "width, height, depth, mean, std")
+TensorNames = namedtuple("TensorNames", "bottleneck, resized_input")
 
 
-class Model(namedtuple("Model", "name, url, filename, input, graph")):
+class Model(namedtuple("Model", "name, url, filename, input, tensor_names")):
 
     __slots__ = ()
 
@@ -48,6 +46,12 @@ class Model(namedtuple("Model", "name, url, filename, input, graph")):
     @property
     def prep_path(self):
         return hdfs.path.join(self.base_dir, "prep.meta")
+
+    def get_bottleneck(self, graph):
+        return graph.get_tensor_by_name(self.tensor_names.bottleneck)
+
+    def get_resized_input(self, graph):
+        return graph.get_tensor_by_name(self.tensor_names.resized_input)
 
     def load(self, path):
         graph_def = tf.GraphDef()
@@ -125,7 +129,6 @@ class Model(namedtuple("Model", "name, url, filename, input, graph")):
             graph.add_to_collection(JPG_INPUT_NAME, jpg_input)
             graph.add_to_collection(MUL_IMAGE_NAME, mul_image)
         self.save_prep(graph)
-        # FIXME: model['bottleneck_dtype'] = bneck_tensor.dtype.name
 
 
 def get_model_info(name=INCEPTION_V3):
@@ -136,11 +139,9 @@ def get_model_info(name=INCEPTION_V3):
             url="%s/image/imagenet/inception-2015-12-05.tgz" % BASE_URL,
             filename="classify_image_graph_def.pb",
             input=Input(width=299, height=299, depth=3, mean=128, std=128),
-            graph={
-                BNECK_NAME: "pool_3/_reshape:0",
-                BNECK_SIZE: 2048,
-                RESIZED_INPUT_NAME: "Mul:0",
-            }
+            tensor_names=TensorNames(
+                bottleneck="pool_3/_reshape:0", resized_input="Mul:0"
+            )
         )
     else:
         match = MOBILENET_V1.match(name)
@@ -159,9 +160,8 @@ def get_model_info(name=INCEPTION_V3):
         filename = "%s_graph.pb" % ("quantized" if quantized else "frozen")
         w = h = int(input_size)
         input = Input(width=w, height=h, depth=3, mean=127.5, std=127.5)
-        graph = {
-            BNECK_NAME: "MobilenetV1/Predictions/Reshape:0",
-            BNECK_SIZE: 1001,
-            RESIZED_INPUT_NAME: "input:0",
-        }
-        return Model(name, url, filename, input, graph)
+        tensor_names = TensorNames(
+            bottleneck="MobilenetV1/Predictions/Reshape:0",
+            resized_input="input:0",
+        )
+        return Model(name, url, filename, input, tensor_names)

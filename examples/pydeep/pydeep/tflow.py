@@ -18,12 +18,8 @@ class BottleneckProjector(object):
         graph = model.load_prep()
         self.jpg_input = graph.get_collection(models.JPG_INPUT_NAME)[0]
         self.mul_image = graph.get_collection(models.MUL_IMAGE_NAME)[0]
-        self.bottleneck_tensor = graph.get_tensor_by_name(
-            model.graph[models.BNECK_NAME]
-        )
-        self.resized_input_tensor = graph.get_tensor_by_name(
-            model.graph[models.RESIZED_INPUT_NAME]
-        )
+        self.bottleneck_tensor = model.get_bottleneck(graph)
+        self.resized_input_tensor = model.get_resized_input(graph)
         self.session = tf.InteractiveSession(graph=graph)
 
     def close_session(self):
@@ -45,9 +41,7 @@ class Retrainer(object):
 
     def __init__(self, model, n_classes, learning_rate):
         graph = model.load_prep()
-        self.bneck_tensor = graph.get_tensor_by_name(
-            model.graph[models.BNECK_NAME]
-        )
+        self.bneck_tensor = model.get_bottleneck(graph)
         self.jpg_input = graph.get_collection(models.JPG_INPUT_NAME)[0]
         self.mul_image = graph.get_collection(models.MUL_IMAGE_NAME)[0]
         self.session = tf.InteractiveSession(graph=graph)
