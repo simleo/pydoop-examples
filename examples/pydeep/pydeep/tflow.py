@@ -9,15 +9,13 @@ import pydoop.hdfs as hdfs
 import tensorflow as tf
 from tensorflow.python.framework import graph_util
 
-import pydeep.models as models
-
 
 class BottleneckProjector(object):
 
     def __init__(self, model):
         graph = model.load_prep()
-        self.jpg_input = graph.get_collection(models.JPG_INPUT_NAME)[0]
-        self.mul_image = graph.get_collection(models.MUL_IMAGE_NAME)[0]
+        self.jpg_input = model.get_jpg_input(graph)
+        self.mul_image = model.get_mul_image(graph)
         self.bottleneck_tensor = model.get_bottleneck(graph)
         self.resized_input_tensor = model.get_resized_input(graph)
         self.session = tf.InteractiveSession(graph=graph)
@@ -42,8 +40,8 @@ class Retrainer(object):
     def __init__(self, model, n_classes, learning_rate):
         graph = model.load_prep()
         self.bneck_tensor = model.get_bottleneck(graph)
-        self.jpg_input = graph.get_collection(models.JPG_INPUT_NAME)[0]
-        self.mul_image = graph.get_collection(models.MUL_IMAGE_NAME)[0]
+        self.jpg_input = model.get_jpg_input(graph)
+        self.mul_image = model.get_mul_image(graph)
         self.session = tf.InteractiveSession(graph=graph)
         self.__add_train_and_eval(n_classes, learning_rate)
 

@@ -32,8 +32,24 @@ TensorNames = namedtuple("TensorNames", "bottleneck, resized_input")
 
 
 class Model(namedtuple("Model", "name, url, filename, input, tensor_names")):
+    """\
+    Metadata hub for a particular network model.
 
-    __slots__ = ()
+    Since this is a transfer learning application whose various stages run in
+    separate processes at different times, we are mainly interested in knowing
+    1. How to retrieve the model for a given state and 2. how to consistently
+    refer to graph components (tensors and ops). We use HDFS for model
+    persistence and the model's metagraph (specifically, collections) to store
+    graph component refs, while keeping this object immutable and lightweight.
+
+    Note that bottleneck and resized input tensor names, as well as input
+    stats are a priori knowledge from the original model. This is handled via
+    the Input and TensorNames named tuples, rather than collections.
+
+    This class is not meant to be used directly, use get_model_info instead.
+    """
+
+    __slots__ = ()  # https://stackoverflow.com/questions/472000
 
     @property
     def base_dir(self):
@@ -52,6 +68,12 @@ class Model(namedtuple("Model", "name, url, filename, input, tensor_names")):
 
     def get_resized_input(self, graph):
         return graph.get_tensor_by_name(self.tensor_names.resized_input)
+
+    def get_jpg_input(self, graph):
+        return graph.get_collection(JPG_INPUT_NAME)[0]
+
+    def get_mul_image(self, graph):
+        return graph.get_collection(MUL_IMAGE_NAME)[0]
 
     def load(self, path):
         graph_def = tf.GraphDef()
