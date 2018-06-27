@@ -1,8 +1,8 @@
 """\
-Hadoop I/O classes.
+I/O classes.
 
-The current implementation is somewhat minimalistic.
-An avro implementation would be more elegant, but probably slower.
+Note on naming: use 'length' (or 'len') for number of elements and 'size' for
+size in bytes.
 """
 
 from hashlib import md5
@@ -15,6 +15,7 @@ import numpy as np
 import pydoop.mapreduce.api as api
 import pydoop.hdfs as hdfs
 from pydoop.utils.serialize import OpaqueInputSplit
+import tensorflow as tf
 
 import pydeep.common as common
 import pydeep.models as models
@@ -24,7 +25,7 @@ logging.basicConfig()
 LOGGER = logging.getLogger("pydeep.ioformats")
 LOGGER.setLevel(logging.INFO)
 
-CHECKSUM_LEN = md5().digest_size
+CHECKSUM_SIZE = md5().digest_size
 
 
 class FileCache(defaultdict):
@@ -33,6 +34,79 @@ class FileCache(defaultdict):
         f = hdfs.open(path, "rb")
         self[path] = f
         return f
+
+
+class BottleneckStore(object):
+
+    def __init__(self, bneck_len, bneck_dtype):
+        bneck_dtype = tf.as_dtype(bneck_dtype)
+        self.bneck_len = bneck_len
+        self.bneck_size = bneck_dtype.size * self.bneck_len
+        self.record_size = CHECKSUM_SIZE + self.bneck_size
+        self.dtype = bneck_dtype.as_numpy_dtype
+
+    def get_bnecks(self, top_dir, posmap=None, checksums=False):
+        top_dir = top_dir.rstrip("/")
+        if posmap is None:
+            posmap = self.build_map(top_dir)
+        fcache = FileCache()
+        ret = {}
+        bneck_size, dtype = self.bneck_size, self.dtype
+        for cls, positions in posmap.items():
+            bnecks = ret[cls] = []
+            for name, offset in positions:
+                path = "%s/%s/%s" % (top_dir, cls, name)
+                chunk = fcache[path].pread(offset + CHECKSUM_SIZE, bneck_size)
+                bneck = np.frombuffer(chunk, dtype)
+                if checksums:
+                    csum = fcache[path].pread(offset, CHECKSUM_SIZE)
+                    bnecks.append((csum, bneck))
+                else:
+                    bnecks.append(bneck)
+        for f in fcache.values():
+            f.close()
+        return ret
+
+    def build_map(self, top_dir):
+        """\
+        For each subdir (corresponding to an image class), build the full
+        list of (filename, offset) pair where each bottleneck dump can be
+        retrieved.
+
+        {'dandelion': [
+            ('part-m-00000', 0),
+            ('part-m-00000', 8192),
+            ...
+            ('part-m-00003', 163840)
+        ],
+        'roses': [
+            ('part-m-00000', 0),
+            ...
+        ]}
+        """
+        m = {}
+        basename = hdfs.path.basename
+        with hdfs.hdfs() as fs:
+            for stat in fs.list_directory(top_dir):
+                if stat['kind'] != 'directory':
+                    continue
+                subd = stat['name']
+                positions = []
+                for s in fs.list_directory(subd):
+                    bname = basename(s["name"])
+                    if bname.startswith("_"):
+                        continue
+                    assert s["size"] % self.record_size == 0
+                    for i in range(0, s["size"], self.record_size):
+                        positions.append((bname, i))
+                m[basename(subd)] = positions
+        return m
+
+    @staticmethod
+    def assign_labels(top_dir):
+        classes = [hdfs.path.basename(_["name"]) for _ in hdfs.lsl(top_dir)
+                   if _["kind"] == "directory"]
+        return {c: i for i, c in enumerate(sorted(classes))}
 
 
 class WholeFileReader(api.RecordReader):
@@ -107,52 +181,52 @@ class BottleneckProjectionsReader(api.RecordReader):
         super(BottleneckProjectionsReader, self).__init__(context)
         self.logger = LOGGER.getChild("BottleneckProjectionsReader")
         raw_split = context.get_input_split(raw=True)
-        self.isplit = OpaqueInputSplit().read(io.BytesIO(raw_split))
-        self.bneck_maps = self.isplit.payload
+        split = OpaqueInputSplit().read(io.BytesIO(raw_split))
         jc = context.job_conf
         model = models.get_model_info(jc[common.GRAPH_ARCH_KEY])
         graph = model.load_prep()
         bneck_tensor = model.get_bottleneck(graph)
-        self.length = bneck_tensor.dtype.size * bneck_tensor.shape[1].value
-        self.dtype = bneck_tensor.dtype.as_numpy_dtype
+        self.bneck_store = BottleneckStore(
+            bneck_tensor.shape[1].value, bneck_tensor.dtype
+        )
         self.n_steps = jc.get_int(common.NUM_STEPS_KEY)
-        self.batch_size = jc.get_int(common.TRAIN_BATCH_SIZE_KEY)
-        self.n_classes = jc.get_int(common.NUM_CLASSES_KEY)
-        assert len(self.bneck_maps) == self.n_classes
+        top_dir = jc.get(common.BNECKS_DIR_KEY)
+        val_fraction = jc.get_int(common.VALIDATION_PERCENT_KEY) / 100
+        # get *all* bottlenecks for this split, assuming they fit in memory
+        bneck_map = self.bneck_store.get_bnecks(top_dir, posmap=split.payload)
+        self.val_bneck_map, self.train_bneck_map = {}, {}
+        while bneck_map:
+            c, bnecks = bneck_map.popitem()
+            i = round(val_fraction * len(bnecks))
+            self.val_bneck_map[c] = bnecks[:i]
+            self.train_bneck_map[c] = bnecks[i:]
+        self.logger.info(
+            "training size = %d, validation size = %d",
+            len(self.train_bneck_map[c]), len(self.val_bneck_map[c])
+        )
+        train_bs = jc.get_int(common.TRAIN_BATCH_SIZE_KEY)
+        val_bs = jc.get_int(common.VALIDATION_BATCH_SIZE_KEY)
+        self.val_bs_map, self.train_bs_map = self.__map_bs(val_bs, train_bs)
         self.step_count = 0
-        self.fcache = FileCache()
-        self.labels = {d: i for i, d in enumerate(sorted(self.bneck_maps))}
 
-    def close(self):
-        self.logger.debug("closing open handles")
-        for f in self.fcache.values():
-            f.close()
-        next(self.fcache.values()).fs.close()
+    def __map_bs(self, val_bs, train_bs):
+        val_bs_map, train_bs_map = {}, {}
+        for c, bnecks in self.val_bneck_map.items():
+            capped = min(val_bs, len(bnecks))
+            val_bs_map[c] = capped if capped > 0 else len(bnecks)
+        for c, bnecks in self.train_bneck_map.items():
+            train_bs_map[c] = min(train_bs, len(bnecks))
+        return val_bs_map, train_bs_map
 
     def next(self):
         if self.step_count >= self.n_steps:
             raise StopIteration
-        batch_size, fcache, length, dtype, n_classes = (
-            self.batch_size,
-            self.fcache,
-            self.length,
-            self.dtype,
-            self.n_classes
-        )
-        record = []
-        for subd, bneck_positions in self.bneck_maps.items():
-            sample = random.sample(
-                bneck_positions, min(batch_size, len(bneck_positions))
-            )
-            for name, offset in sample:
-                path = "%s/%s" % (subd, name)
-                chunk = fcache[path].pread(offset + CHECKSUM_LEN, length)
-                bneck = np.frombuffer(chunk, dtype)
-                gtruth = np.zeros(n_classes, dtype=np.float32)
-                gtruth[self.labels[subd]] = 1
-                record.append((bneck, gtruth))
+        train_batch = {c: random.sample(bnecks, self.train_bs_map[c])
+                       for c, bnecks in self.train_bneck_map.items()}
+        val_batch = {c: random.sample(bnecks, self.val_bs_map[c])
+                     for c, bnecks in self.val_bneck_map.items()}
         self.step_count += 1
-        return self.step_count, record
+        return self.step_count, (train_batch, val_batch)
 
     def get_progress(self):
         return min(self.step_count / self.n_steps, 1.0)

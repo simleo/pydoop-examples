@@ -3,12 +3,13 @@ import itertools
 LOG_LEVELS = 'CRITICAL', 'DEBUG', 'ERROR', 'INFO', 'WARNING'
 LOG_LEVEL_KEY = 'pydeep.log.level'
 
+BNECKS_DIR_KEY = 'pydeep.bottlenecks.dir'
 EVAL_STEP_INTERVAL_KEY = 'tensorflow.eval.step.interval'
 GRAPH_ARCH_KEY = 'tensorflow.graph.architecture'
 LEARNING_RATE_KEY = 'tensorflow.learning.rate'
-NUM_CLASSES_KEY = 'tensorflow.num.classes'
 NUM_STEPS_KEY = 'tensorflow.train.num.steps'
 TRAIN_BATCH_SIZE_KEY = 'tensorflow.train.batch.size'
+VALIDATION_BATCH_SIZE_KEY = 'tensorflow.validation.batch.size'
 VALIDATION_PERCENT_KEY = 'tensorflow.train.validation.percent'
 
 # The following should be defined in pydoop

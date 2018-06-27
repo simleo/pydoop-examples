@@ -15,8 +15,6 @@ import shutil
 import sys
 import tempfile
 import uuid
-from hashlib import md5
-from operator import itemgetter
 
 from pydoop.app.submit import (
     add_parser_common_arguments, add_parser_arguments, PydoopSubmitter
@@ -26,6 +24,7 @@ from pydoop import hdfs
 
 import pydeep.common as common
 import pydeep.models as models
+import pydeep.ioformats as ioformats
 
 LOGGER = logging.getLogger("retrain_subsets")
 WORKER = "rsworker"
@@ -36,7 +35,10 @@ def make_parser():
     parser = argparse.ArgumentParser()
     parser.add_argument('--architecture', metavar='STR',
                         default=models.DEFAULT)
-    parser.add_argument('--batch-size', metavar='INT', type=int, default=100)
+    parser.add_argument('--train-batch-size', metavar='INT', type=int,
+                        default=100)
+    parser.add_argument('--validation-batch-size', metavar='INT', type=int,
+                        default=100)
     parser.add_argument('--eval-step-interval', metavar='INT', type=int,
                         default=10)
     parser.add_argument('--learning-rate', metavar='FLOAT', type=float,
@@ -47,44 +49,6 @@ def make_parser():
     add_parser_common_arguments(parser)
     add_parser_arguments(parser)
     return parser
-
-
-def map_bnecks_to_files(input_dir, record_size):
-    """\
-    For each input subdir (corresponding to an image class), build the full
-    list of (filename, offset) pair where each bottleneck dump can be
-    retrieved.
-
-    {'hdfs://.../bottlenecks/dandelion': [
-        ('part-m-00000', 0),
-        ('part-m-00000', 8192),
-        ...
-        ('part-m-00003', 163840)
-    ],
-    'hdfs://.../bottlenecks/roses': [
-        ('part-m-00000', 0),
-        ...
-    ]}
-    """
-    m = {}
-    with hdfs.hdfs() as fs:
-        for stat in fs.list_directory(input_dir):
-            if stat['kind'] != 'directory':
-                continue
-            subd = stat['name']
-            stats = [_ for _ in fs.list_directory(subd)
-                     if not hdfs.path.basename(_["name"]).startswith("_")]
-            stats.sort(key=itemgetter("name"))
-            m[subd] = stats
-    for subd, stats in m.items():
-        positions = []
-        for s in stats:
-            bname = hdfs.path.basename(s["name"])
-            assert s["size"] % record_size == 0
-            for i in range(0, s["size"], record_size):
-                positions.append((bname, i))
-        m[subd] = positions
-    return m
 
 
 def generate_input_splits(N, bneck_map, splits_path):
@@ -118,9 +82,10 @@ def main(argv=None):
     model = models.get_model_info(args.architecture)
     graph = model.load_prep()
     bneck_tensor = model.get_bottleneck(graph)
-    bneck_size = bneck_tensor.dtype.size * bneck_tensor.shape[1].value
-    record_size = md5().digest_size + bneck_size
-    bneck_map = map_bnecks_to_files(args.input, record_size)
+    bneck_store = ioformats.BottleneckStore(
+        bneck_tensor.shape[1].value, bneck_tensor.dtype
+    )
+    bneck_map = bneck_store.build_map(args.input)
     LOGGER.info("%d subdirs, %r bottlenecks" %
                 (len(bneck_map), [len(_) for _ in bneck_map.values()]))
     splits_path = os.path.join(args.input, '_' + uuid.uuid4().hex)
@@ -128,15 +93,16 @@ def main(argv=None):
     submitter = PydoopSubmitter()
     submitter.set_args(args, [] if unknown_args is None else unknown_args)
     submitter.properties.update({
+        common.BNECKS_DIR_KEY: args.input,
         common.EVAL_STEP_INTERVAL_KEY: args.eval_step_interval,
         common.GRAPH_ARCH_KEY: args.architecture,
         common.LEARNING_RATE_KEY: args.learning_rate,
         common.LOG_LEVEL_KEY: args.log_level,
-        common.NUM_CLASSES_KEY: len(bneck_map),
         common.NUM_MAPS_KEY: args.num_maps,
         common.NUM_STEPS_KEY: args.num_steps,
         common.PYDOOP_EXTERNALSPLITS_URI_KEY: splits_path,
-        common.TRAIN_BATCH_SIZE_KEY: args.batch_size,
+        common.TRAIN_BATCH_SIZE_KEY: args.train_batch_size,
+        common.VALIDATION_BATCH_SIZE_KEY: args.validation_batch_size,
         common.VALIDATION_PERCENT_KEY: args.validation_percent,
     })
     submitter.run()
