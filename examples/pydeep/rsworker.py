@@ -7,7 +7,6 @@ Input value: input data for this step as a [(bottleneck, ground_truth)] list
 
 import logging
 
-import numpy as np
 import pydoop.mapreduce.api as api
 import pydoop.mapreduce.pipes as pp
 
@@ -60,15 +59,7 @@ class Mapper(api.Mapper):
                          (cross_entropy, train_accuracy, val_accuracy))
 
     def __map_to_vectors(self, batch):
-        all_bnecks, all_ground_truths = [], []
-        labels = self.labels
-        for c, bnecks in batch.items():
-            all_bnecks.extend(bnecks)
-            for i in range(len(bnecks)):
-                gt = np.zeros(len(labels), dtype=np.float32)
-                gt[labels[c]] = 1
-                all_ground_truths.append(gt)
-        return all_bnecks, all_ground_truths
+        return BottleneckStore.bnecks_map_to_vectors(batch, self.labels)
 
 
 factory = pp.Factory(

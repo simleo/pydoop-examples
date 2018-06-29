@@ -108,6 +108,17 @@ class BottleneckStore(object):
                    if _["kind"] == "directory"]
         return {c: i for i, c in enumerate(sorted(classes))}
 
+    @staticmethod
+    def bnecks_map_to_vectors(bnecks_map, labels):
+        all_bnecks, all_ground_truths = [], []
+        for c, bnecks in bnecks_map.items():
+            all_bnecks.extend(bnecks)
+            for i in range(len(bnecks)):
+                gt = np.zeros(len(labels), dtype=np.float32)
+                gt[labels[c]] = 1
+                all_ground_truths.append(gt)
+        return all_bnecks, all_ground_truths
+
 
 class WholeFileReader(api.RecordReader):
     """\

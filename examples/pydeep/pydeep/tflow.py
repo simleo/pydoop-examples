@@ -8,8 +8,9 @@ import numpy as np
 import pydoop.hdfs as hdfs
 import tensorflow as tf
 from tensorflow.core.framework import attr_value_pb2, graph_pb2, node_def_pb2
-
 from tensorflow.python.framework import tensor_util
+
+import pydeep.models as models
 
 
 class BottleneckProjector(object):
@@ -74,9 +75,9 @@ class Retrainer(object):
         self.train_step = optimizer.minimize(
             self.cross_entropy_mean, name="train_step"
         )
-        prediction = tf.argmax(final_tensor, 1, name="prediction")
+        self.prediction = tf.argmax(final_tensor, 1, name="prediction")
         correct_prediction = tf.equal(
-            prediction, tf.argmax(self.ground_truth_input, 1)
+            self.prediction, tf.argmax(self.ground_truth_input, 1)
         )
         self.eval_step = tf.reduce_mean(
             tf.cast(correct_prediction, tf.float32), name="evaluation_step"
@@ -138,6 +139,12 @@ class Retrainer(object):
         return output_graph_def
 
     def dump_output_graph(self, path):
+        # add refs to items needed for the testing phase
+        g = self.session.graph
+        g.add_to_collection(models.BNECK_INPUT_NAME, self.bneck_input)
+        g.add_to_collection(models.GTRUTH_INPUT_NAME, self.ground_truth_input)
+        g.add_to_collection(models.EVAL_STEP_NAME, self.eval_step)
+        g.add_to_collection(models.PREDICTION_NAME, self.prediction)
         out_graph_def = self.__freeze_vars()
         meta_graph_def = tf.train.export_meta_graph(graph_def=out_graph_def)
         hdfs.dump(meta_graph_def.SerializeToString(), path)

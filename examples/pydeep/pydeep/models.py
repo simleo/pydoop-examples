@@ -25,6 +25,10 @@ MOBILENET_V1_INPUT_SIZES = frozenset(("128", "160", "192", "224"))
 
 JPG_INPUT_NAME = "jpg_input_name"
 MUL_IMAGE_NAME = "mul_image_name"
+BNECK_INPUT_NAME = "bottleneck_input"
+GTRUTH_INPUT_NAME = "ground_truth_input"
+EVAL_STEP_NAME = "eval_step"
+PREDICTION_NAME = "prediction"
 
 
 Input = namedtuple("Input", "width, height, depth, mean, std")
@@ -74,6 +78,18 @@ class Model(namedtuple("Model", "name, url, filename, input, tensor_names")):
 
     def get_mul_image(self, graph):
         return graph.get_collection(MUL_IMAGE_NAME)[0]
+
+    def get_bneck_input(self, graph):
+        return graph.get_collection(BNECK_INPUT_NAME)[0]
+
+    def get_gtruth_input(self, graph):
+        return graph.get_collection(GTRUTH_INPUT_NAME)[0]
+
+    def get_eval_step(self, graph):
+        return graph.get_collection(EVAL_STEP_NAME)[0]
+
+    def get_prediction(self, graph):
+        return graph.get_collection(PREDICTION_NAME)[0]
 
     def load(self, path):
         graph_def = tf.GraphDef()
