@@ -35,7 +35,7 @@ class Mapper(api.Mapper):
         self.validation_percent = jc.get_int(common.VALIDATION_PERCENT_KEY)
         model = models.get_model_info(jc[common.GRAPH_ARCH_KEY])
         self.retrainer = tflow.Retrainer(model, len(self.labels), learn_rate)
-        self.out_path = "%s.pb" % context.get_default_work_file()
+        self.out_path = "%s.meta" % context.get_default_work_file()
 
     def close(self):
         self.retrainer.dump_output_graph(self.out_path)

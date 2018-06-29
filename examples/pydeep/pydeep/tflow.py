@@ -7,7 +7,9 @@ TODO: use the tf.data API
 import numpy as np
 import pydoop.hdfs as hdfs
 import tensorflow as tf
-from tensorflow.python.framework import graph_util
+from tensorflow.core.framework import attr_value_pb2, graph_pb2, node_def_pb2
+
+from tensorflow.python.framework import tensor_util
 
 
 class BottleneckProjector(object):
@@ -35,13 +37,9 @@ class BottleneckProjector(object):
 
 class Retrainer(object):
 
-    FINAL_TENSOR_NAME = "final_tensor"
-
     def __init__(self, model, n_classes, learning_rate):
         graph = model.load_prep()
         self.bneck_tensor = model.get_bottleneck(graph)
-        self.jpg_input = model.get_jpg_input(graph)
-        self.mul_image = model.get_mul_image(graph)
         self.session = tf.InteractiveSession(graph=graph)
         self.__add_train_and_eval(n_classes, learning_rate)
 
@@ -67,7 +65,7 @@ class Retrainer(object):
         layer_weights = tf.Variable(initial_value, name='final_weights')
         layer_biases = tf.Variable(tf.zeros([n_classes]), name='final_biases')
         logits = tf.matmul(self.bneck_input, layer_weights) + layer_biases
-        self.final_tensor = tf.nn.softmax(logits, name=self.FINAL_TENSOR_NAME)
+        final_tensor = tf.nn.softmax(logits, name="final_tensor")
         cross_entropy = tf.nn.softmax_cross_entropy_with_logits_v2(
             labels=self.ground_truth_input, logits=logits
         )
@@ -76,7 +74,7 @@ class Retrainer(object):
         self.train_step = optimizer.minimize(
             self.cross_entropy_mean, name="train_step"
         )
-        prediction = tf.argmax(self.final_tensor, 1, name="prediction")
+        prediction = tf.argmax(final_tensor, 1, name="prediction")
         correct_prediction = tf.equal(
             prediction, tf.argmax(self.ground_truth_input, 1)
         )
@@ -109,9 +107,37 @@ class Retrainer(object):
             }
         )
 
+    def __freeze_vars(self):
+        """\
+        Adapted from tf.graph_util.convert_variables_to_constants.
+        """
+        graph = self.session.graph
+        var_names = [
+            _.name for _ in graph.get_collection(tf.GraphKeys.GLOBAL_VARIABLES)
+        ]
+        var_values = self.session.run(var_names)
+        var_map = dict(zip(var_names, var_values))
+        output_graph_def = graph_pb2.GraphDef()
+        input_graph_def = graph.as_graph_def()
+        for input_node in input_graph_def.node:
+            output_node = node_def_pb2.NodeDef()
+            if input_node.name in var_map:
+                output_node.op = "Const"
+                output_node.name = input_node.name
+                dtype = input_node.attr["dtype"]
+                data = var_map[input_node.name]
+                output_node.attr["dtype"].CopyFrom(dtype)
+                output_node.attr["value"].CopyFrom(
+                    attr_value_pb2.AttrValue(
+                        tensor=tensor_util.make_tensor_proto(
+                            data, dtype=dtype.type, shape=data.shape)))
+            else:
+                output_node.CopyFrom(input_node)
+            output_graph_def.node.extend([output_node])
+        output_graph_def.library.CopyFrom(input_graph_def.library)
+        return output_graph_def
+
     def dump_output_graph(self, path):
-        out_node_names = [self.FINAL_TENSOR_NAME]
-        out_graph_def = graph_util.convert_variables_to_constants(
-            self.session, self.session.graph.as_graph_def(), out_node_names
-        )
-        hdfs.dump(out_graph_def.SerializeToString(), path)
+        out_graph_def = self.__freeze_vars()
+        meta_graph_def = tf.train.export_meta_graph(graph_def=out_graph_def)
+        hdfs.dump(meta_graph_def.SerializeToString(), path)
