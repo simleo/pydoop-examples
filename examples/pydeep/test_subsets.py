@@ -41,7 +41,7 @@ def generate_input_splits(N, input_dir, splits_path):
     Assign a subset of the trained models to each split.
     """
     paths = [_ for _ in hdfs.ls(input_dir) if
-             re.match(r"^part-m-\d+\.meta$", hdfs.path.basename(_))]
+             re.match(r"^part-m-\d+\.zip$", hdfs.path.basename(_))]
     if N > len(paths):
         N = len(paths)
         LOGGER.warn("Not enough input models, will only do %d splits" % N)

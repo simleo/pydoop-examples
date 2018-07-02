@@ -108,43 +108,11 @@ class Retrainer(object):
             }
         )
 
-    def __freeze_vars(self):
-        """\
-        Adapted from tf.graph_util.convert_variables_to_constants.
-        """
-        graph = self.session.graph
-        var_names = [
-            _.name for _ in graph.get_collection(tf.GraphKeys.GLOBAL_VARIABLES)
-        ]
-        var_values = self.session.run(var_names)
-        var_map = dict(zip(var_names, var_values))
-        output_graph_def = graph_pb2.GraphDef()
-        input_graph_def = graph.as_graph_def()
-        for input_node in input_graph_def.node:
-            output_node = node_def_pb2.NodeDef()
-            if input_node.name in var_map:
-                output_node.op = "Const"
-                output_node.name = input_node.name
-                dtype = input_node.attr["dtype"]
-                data = var_map[input_node.name]
-                output_node.attr["dtype"].CopyFrom(dtype)
-                output_node.attr["value"].CopyFrom(
-                    attr_value_pb2.AttrValue(
-                        tensor=tensor_util.make_tensor_proto(
-                            data, dtype=dtype.type, shape=data.shape)))
-            else:
-                output_node.CopyFrom(input_node)
-            output_graph_def.node.extend([output_node])
-        output_graph_def.library.CopyFrom(input_graph_def.library)
-        return output_graph_def
-
-    def dump_output_graph(self, path):
+    def checkpoint(self, path):
         # add refs to items needed for the testing phase
         g = self.session.graph
         g.add_to_collection(models.BNECK_INPUT_NAME, self.bneck_input)
         g.add_to_collection(models.GTRUTH_INPUT_NAME, self.ground_truth_input)
         g.add_to_collection(models.EVAL_STEP_NAME, self.eval_step)
         g.add_to_collection(models.PREDICTION_NAME, self.prediction)
-        out_graph_def = self.__freeze_vars()
-        meta_graph_def = tf.train.export_meta_graph(graph_def=out_graph_def)
-        hdfs.dump(meta_graph_def.SerializeToString(), path)
+        models.save_checkpoint(path)

@@ -55,6 +55,8 @@ class Model(namedtuple("Model", "name, url, filename, input, tensor_names")):
 
     __slots__ = ()  # https://stackoverflow.com/questions/472000
 
+    CHECKPOINT_NAME = "model.ckpt"
+
     @property
     def base_dir(self):
         return self.name
@@ -203,3 +205,39 @@ def get_model_info(name=INCEPTION_V3):
             resized_input="input:0",
         )
         return Model(name, url, filename, input, tensor_names)
+
+
+def save_checkpoint(path, session=None):
+    if session is None:
+        session = tf.get_default_session()
+    if session is None:
+        raise RuntimeError("no session specified and no current session")
+    saver = tf.train.Saver()
+    wd = tempfile.mkdtemp(prefix="pydeep_")
+    sub_d = hdfs.path.splitext(hdfs.path.basename(path))[0]
+    abs_d = os.path.join(wd, sub_d)
+    os.makedirs(abs_d)
+    saver.save(session, os.path.join(abs_d, Model.CHECKPOINT_NAME))
+    zip_fn = "%s.zip" % abs_d
+    shutil.make_archive(*zip_fn.rsplit(".", 1), root_dir=abs_d)
+    with hdfs.hdfs() as fs, hdfs.hdfs("", 0) as local_fs:
+        local_fs.copy(zip_fn, fs, path)
+
+
+def load_checkpoint(path, session=None):
+    if session is None:
+        session = tf.get_default_session()
+    if session is None:
+        raise RuntimeError("no session specified and no current session")
+    wd = tempfile.mkdtemp(prefix="pydeep_")
+    zip_fn = os.path.join(wd, hdfs.path.basename(path))
+    with hdfs.hdfs() as fs, hdfs.hdfs("", 0) as local_fs:
+        fs.copy(path, local_fs, zip_fn)
+    unpack_dir = os.path.splitext(zip_fn)[0]
+    shutil.unpack_archive(zip_fn, unpack_dir)
+    ckpt_path = os.path.join(unpack_dir, Model.CHECKPOINT_NAME)
+    metagraph_path = "%s.meta" % ckpt_path
+    if not os.path.isfile(metagraph_path):
+        raise RuntimeError("checkpoint files not found in %s" % zip_fn)
+    saver = tf.train.import_meta_graph(metagraph_path)
+    saver.restore(session, ckpt_path)
