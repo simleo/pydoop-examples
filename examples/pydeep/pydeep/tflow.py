@@ -5,10 +5,7 @@ TODO: use the tf.data API
 """
 
 import numpy as np
-import pydoop.hdfs as hdfs
 import tensorflow as tf
-from tensorflow.core.framework import attr_value_pb2, graph_pb2, node_def_pb2
-from tensorflow.python.framework import tensor_util
 
 import pydeep.models as models
 
