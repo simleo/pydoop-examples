@@ -9,10 +9,6 @@ this_dir=$(cd -P -- "$(dirname -- "${this}")" && pwd -P)
 
 [ ${PY_VER} -le 2 ] && die "ERROR: Python 3 required"
 
-NUM_MAPS="${NUM_MAPS:-4}"
-OPTS=( "--num-maps" "${NUM_MAPS}" )
-[ -n "${DEBUG:-}" ] && OPTS+=( "--log-level" "DEBUG" )
-
 export LIBHDFS_OPTS="-Xmx512m"
 
 pushd "${this_dir}"
@@ -32,9 +28,9 @@ fi
 ensure_dfs_home
 ${HDFS} dfs -test -d "${img_dir}" || ${HADOOP} distcp -atomic "file://${PWD}/${img_dir}" "${img_dir}"
 ${HDFS} dfs -rm -r -f "${bneck_dir}" "${train_output}" "${test_output}"
-${PYTHON} genbnecks.py "${OPTS[@]}" "${img_dir}" "${bneck_dir}"
-${PYTHON} retrain_subsets.py "${OPTS[@]}" --num-steps 400 "${bneck_dir}" "${train_output}"
-${PYTHON} plot_training.py "${train_output}" "${plots_dir}"
-${PYTHON} test_subsets.py --bnecks-dir "${bneck_dir}" --num-maps 2 "${train_output}" "${test_output}"
-${HDFS} dfs -cat "${test_output}"/part* | sort
+
+OPTS=(  "--train-output" "${train_output}" "--bnecks-dir" "${bneck_dir}" )
+[ -n "${DEBUG:-}" ] && OPTS+=( "--log-level" "DEBUG" "--num-steps" "400")
+
+${PYTHON} local_retrain.py "${OPTS[@]}" "${img_dir}"
 popd
