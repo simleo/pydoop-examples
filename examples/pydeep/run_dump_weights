@@ -13,12 +13,15 @@ NUM_MODELS="${NUM_MODELS:-1024}"
 
 pushd "${this_dir}"
 num_runs=$(( NUM_MODELS / RETRAIN_NUM_MAPS ))
+out_dir="${RETRAIN_NUM_MAPS}_splits"
 ${HDFS} dfs -test -d "${BNECKS_DIR}" || ./run_genbnecks
+${HDFS} dfs -rm -r -f "${out_dir}"
+all_seeds=()
 for i in $(seq 1 ${num_runs}); do
     seed="$(utc_timestamp_ns)"
     echo "running with seed: ${seed}"
     ${PYTHON} retrain_subsets.py --num-steps "${NUM_STEPS}" --num-maps "${RETRAIN_NUM_MAPS}" --seed ${seed} --log-level "${LOG_LEVEL}" "${BNECKS_DIR}" ${seed}
-    ${PYTHON} dump_weights.py --log-level "${LOG_LEVEL}" ${seed}
-    [ -n "${KEEP_MODELS:-}" ] || ${HDFS} dfs -rm -r -f ${seed}
+    all_seeds+=( ${seed} )
 done
+${PYTHON} dump_weights.py --collate --log-level "${LOG_LEVEL}" "${all_seeds[@]}" --output "${out_dir}"
 popd

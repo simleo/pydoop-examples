@@ -7,6 +7,7 @@ import logging
 import os
 import re
 import sys
+import uuid
 
 import numpy as np
 from pydoop import hdfs
@@ -21,17 +22,20 @@ LOGGER = logging.getLogger("dump_weights")
 
 def make_parser():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("input", metavar="INPUT_DIR")
+    parser.add_argument("input", nargs="+", metavar="INPUT_DIR [INPUT_DIR...]")
     parser.add_argument("--architecture", metavar="STR",
                         default=models.DEFAULT)
-    parser.add_argument("--out-weights", metavar="PATH")
-    parser.add_argument("--out-biases", metavar="PATH")
+    parser.add_argument("--collate", action="store_true")
     parser.add_argument("--log-level", metavar="|".join(LOG_LEVELS),
                         choices=LOG_LEVELS, default="INFO")
+    parser.add_argument("--output", metavar="OUTPUT_DIR")
     return parser
 
 
 def get_wb(model, path):
+    """\
+    Get weights and biases from the model checkpoint stored in path.
+    """
     with tf.Session(graph=tf.Graph()) as session:
         models.load_checkpoint(path)
         graph = session.graph
@@ -42,32 +46,63 @@ def get_wb(model, path):
         return session.run((weights, biases))
 
 
-def main(argv=sys.argv):
-    os.chdir(os.path.dirname(os.path.abspath(__file__)))
-    parser = make_parser()
-    args = parser.parse_args(argv[1:])
-    LOGGER.setLevel(args.log_level)
-    if args.out_weights is None:
-        args.out_weights = hdfs.path.join("%s_weights.npz" % args.input)
-    if args.out_biases is None:
-        args.out_biases = hdfs.path.join("%s_biases.npz" % args.input)
+def get_all_wb(model, checkpoint_dir):
+    """\
+    Get all weights and biases from model checkpoints in checkpoint_dir.
+
+    checkpoint_dir:
+      part-m-00000.zip
+      part-m-00001.zip
+      ...
+
+    return:
+      {"00000": W0, "00001": W1, ...}, {"00000": b0, "00001": b1, ...}
+    """
     paths = []
     tags = {}
-    for p in hdfs.ls(args.input):
+    for p in hdfs.ls(checkpoint_dir):
         m = re.match(r"^part-m-(\d+)\.zip$", hdfs.path.basename(p))
         if m:
             paths.append(p)
             tags[p] = m.groups()[0]
-    model = models.get_model_info(args.architecture)
     weights, biases = {}, {}
     for p in paths:
         t = tags[p]
         weights[t], biases[t] = get_wb(model, p)
         LOGGER.info("%s: W %r b %r", p, weights[t].shape, biases[t].shape)
-    with hdfs.open(args.out_weights, "wb") as f:
-        np.savez(f, **weights)
-    with hdfs.open(args.out_biases, "wb") as f:
-        np.savez(f, **biases)
+    return weights, biases
+
+
+def main(argv=sys.argv):
+    os.chdir(os.path.dirname(os.path.abspath(__file__)))
+    parser = make_parser()
+    args = parser.parse_args(argv[1:])
+    LOGGER.setLevel(args.log_level)
+    if not args.output:
+        args.output = "pydeep-%s" % uuid.uuid4()
+    LOGGER.info("dumping to %s", args.output)
+    hdfs.mkdir(args.output)
+    model = models.get_model_info(args.architecture)
+    if args.collate:
+        all_w, all_b = {}, {}
+    for d in args.input:
+        bn = hdfs.path.basename(d)
+        weights, biases = get_all_wb(model, d)
+        if args.collate:
+            all_w.update({"%s_%s" % (d, t): w for (t, w) in weights.items()})
+            all_b.update({"%s_%s" % (d, t): b for (t, b) in biases.items()})
+        else:
+            w_path = hdfs.path.join(args.output, "%s_weights.npz" % bn)
+            b_path = hdfs.path.join(args.output, "%s_biases.npz" % bn)
+            with hdfs.open(w_path, "wb") as f:
+                np.savez(f, **weights)
+            with hdfs.open(b_path, "wb") as f:
+                np.savez(f, **biases)
+    if args.collate:
+        with hdfs.open(hdfs.path.join(args.output, "weights.npz"), "wb") as f:
+            np.savez(f, **all_w)
+        with hdfs.open(hdfs.path.join(args.output, "biases.npz"), "wb") as f:
+            np.savez(f, **all_b)
 
 
 if __name__ == "__main__":
