@@ -25,3 +25,5 @@ for i in $(seq 1 ${num_runs}); do
 done
 ${PYTHON} dump_weights.py --collate --log-level "${LOG_LEVEL}" "${all_seeds[@]}" --output "${out_dir}"
 popd
+
+[ -n "${DELETE_TRAINED_MODELS:-}" ] && hdfs dfs -rm -r -f "${all_seeds[@]}"
