@@ -114,6 +114,9 @@ def run_mapred(model, input_dirs, output_dir, nmaps, log_level, collate=False):
     wd = tempfile.mkdtemp(prefix="pydeep_")
     zip_fn = os.path.join(wd, "{}.zip".format(PACKAGE))
     shutil.make_archive(*zip_fn.rsplit(".", 1), base_dir=PACKAGE)
+    if nmaps > len(input_dirs):
+        nmaps = len(input_dirs)
+        LOGGER.warn("Not enough input dirs, will only do %d splits" % nmaps)
     splits = common.balanced_split(input_dirs, nmaps)
     splits_uri = "pydoop_splits_%s" % uuid.uuid4().hex
     with hdfs.open(splits_uri, 'wb') as f:

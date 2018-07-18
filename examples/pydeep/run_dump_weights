@@ -9,10 +9,10 @@ this_dir=$(cd -P -- "$(dirname -- "${this}")" && pwd -P)
 
 [ ${PY_VER} -le 2 ] && die "ERROR: Python 3 required"
 
-NUM_MODELS="${NUM_MODELS:-1024}"
+NUM_MODELS="${NUM_MODELS:-$((RETRAIN_NUM_MAPS * 2))}"
 
 pushd "${this_dir}"
-num_runs=$(( NUM_MODELS / RETRAIN_NUM_MAPS ))
+num_runs=$((NUM_MODELS / RETRAIN_NUM_MAPS))
 out_dir="${RETRAIN_NUM_MAPS}_splits"
 ${HDFS} dfs -test -d "${BNECKS_DIR}" || ./run_genbnecks
 ${HDFS} dfs -rm -r -f "${out_dir}"
@@ -23,7 +23,7 @@ for i in $(seq 1 ${num_runs}); do
     ${PYTHON} retrain_subsets.py --num-steps "${NUM_STEPS}" --num-maps "${RETRAIN_NUM_MAPS}" --seed ${seed} --log-level "${LOG_LEVEL}" "${BNECKS_DIR}" ${seed}
     all_seeds+=( ${seed} )
 done
-${PYTHON} dump_weights.py --collate --log-level "${LOG_LEVEL}" "${all_seeds[@]}" --output "${out_dir}"
+${PYTHON} dump_weights.py --log-level "${LOG_LEVEL}" --collate --mapred --num-maps ${num_runs} --output "${out_dir}" "${all_seeds[@]}"
 popd
 
-[ -n "${DELETE_TRAINED_MODELS:-}" ] && hdfs dfs -rm -r -f "${all_seeds[@]}"
+[ -n "${DELETE_TRAINED_MODELS:-}" ] && hdfs dfs -rm -r -f "${all_seeds[@]}" || :
