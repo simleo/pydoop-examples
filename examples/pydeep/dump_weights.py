@@ -32,6 +32,7 @@ PACKAGE = "pydeep"
 def make_parser():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("input", nargs="+", metavar="INPUT_DIR [INPUT_DIR...]")
+    parser.add_argument("--input-from-list", action="store_true")
     parser.add_argument("--architecture", metavar="STR",
                         default=models.DEFAULT)
     parser.add_argument("--collate", action="store_true")
@@ -168,7 +169,7 @@ def run_mapred(model, input_dirs, output_dir, nmaps, log_level, collate=False):
 
 def collate_mapred_output(output_dir):
     data = {"weights": {}, "biases": {}}
-    pattern = re.compile(r"(\d+)-(weights|biases).npz")
+    pattern = re.compile(r"part-m-\d+-(\d+)-(weights|biases).npz")
     for path in hdfs.ls(output_dir):
         LOGGER.debug("processing: %s", path)
         m = pattern.match(hdfs.path.basename(path))
@@ -212,17 +213,20 @@ class Writer(api.RecordWriter):
 
     def __init__(self, context):
         super(Writer, self).__init__(context)
-        user = context.job_conf.get("pydoop.hdfs.user", None)
-        h, p, self.d = hdfs.path.split(context.get_work_path(), user=user)
-        self.fs = hdfs.hdfs(h, p, user)
+        LOGGER.setLevel(context.job_conf[common.LOG_LEVEL_KEY])
+        self.user = context.job_conf.get("pydoop.hdfs.user", None)
+        self.base_path = context.get_default_work_file()
+        LOGGER.info("base path: %r", self.base_path)
 
     def emit(self, key, value):
         weights, biases = value
-        weights_path = "%s/%s-weights.npz" % (self.d, key)
-        biases_path = "%s/%s-biases.npz" % (self.d, key)
-        with self.fs.open_file(weights_path, "wb") as f:
+        weights_path = "%s-%s-weights.npz" % (self.base_path, key)
+        biases_path = "%s-%s-biases.npz" % (self.base_path, key)
+        LOGGER.debug("writing weights to %s", weights_path)
+        with hdfs.open(weights_path, "wb", user=self.user) as f:
             np.savez(f, **weights)
-        with self.fs.open_file(biases_path, "wb") as f:
+        LOGGER.debug("writing biases to %s", biases_path)
+        with hdfs.open(biases_path, "wb", user=self.user) as f:
             np.savez(f, **biases)
 
 
@@ -237,6 +241,13 @@ def main(argv=sys.argv):
     parser = make_parser()
     args = parser.parse_args(argv[1:])
     LOGGER.setLevel(args.log_level)
+    if args.input_from_list:
+        if len(args.input) > 1:
+            raise RuntimeError(
+                "with --input-from-list, specify only 1 input (file)"
+            )
+        with hdfs.open(args.input[0], "rt") as f:
+            args.input = [_.strip() for _ in f]
     if not args.output:
         args.output = "pydeep-%s" % uuid.uuid4()
     LOGGER.info("dumping to %s", args.output)
