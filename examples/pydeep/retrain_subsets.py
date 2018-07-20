@@ -12,6 +12,7 @@ import argparse
 import logging
 import os
 import shutil
+import random
 import sys
 import tempfile
 import uuid
@@ -45,6 +46,7 @@ def make_parser():
                         default=0.01)
     parser.add_argument('--num-maps', metavar='INT', type=int, default=4)
     parser.add_argument('--num-steps', metavar='INT', type=int, default=4000)
+    parser.add_argument('--seed', metavar='INT', type=int)
     parser.add_argument('--validation-percent', type=int, default=10)
     add_parser_common_arguments(parser)
     add_parser_arguments(parser)
@@ -55,6 +57,8 @@ def generate_input_splits(N, bneck_map, splits_path):
     """\
     Assign to each split a chunk of bottlenecks across all classes.
     """
+    for locs in bneck_map.values():
+        random.shuffle(locs)
     bneck_map = {d: list(common.balanced_split(locs, N))
                  for d, locs in bneck_map.items()}
     splits = [{d: seq[i] for d, seq in bneck_map.items()} for i in range(N)]
@@ -78,6 +82,9 @@ def main(argv=None):
     args.python_zip = [zip_fn]
     args.do_not_use_java_record_reader = True
     args.num_reducers = 0
+    if args.seed:
+        LOGGER.info("setting random seed to %d", args.seed)
+        random.seed(args.seed)
 
     model = models.get_model_info(args.architecture)
     graph = model.load_prep()
@@ -105,6 +112,8 @@ def main(argv=None):
         common.VALIDATION_BATCH_SIZE_KEY: args.validation_batch_size,
         common.VALIDATION_PERCENT_KEY: args.validation_percent,
     })
+    if args.seed:
+        submitter.properties[common.SEED_KEY] = args.seed
     submitter.run()
     hdfs.rmr(splits_path)
     shutil.rmtree(wd)

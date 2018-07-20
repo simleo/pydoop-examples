@@ -194,6 +194,10 @@ class BottleneckProjectionsReader(api.RecordReader):
         raw_split = context.get_input_split(raw=True)
         split = OpaqueInputSplit().read(io.BytesIO(raw_split))
         jc = context.job_conf
+        if common.SEED_KEY in jc:  # https://github.com/crs4/pydoop/issues/318
+            seed = jc.get_int(common.SEED_KEY)
+            LOGGER.info("random seed: %r", seed)
+            random.seed(seed)
         model = models.get_model_info(jc[common.GRAPH_ARCH_KEY])
         graph = model.load_prep()
         bneck_tensor = model.get_bottleneck(graph)

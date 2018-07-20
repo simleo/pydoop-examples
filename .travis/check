@@ -16,5 +16,6 @@ fi
 
 for e in ${examples}; do
     cmd="source /etc/profile && cd /examples/${e} && ./run_tests && ./run"
+    [ "${examples}" == "pydeep" ] && cmd+=" && ./run_local"
     docker exec "${OPTS[@]}" pydoop bash -c "${cmd}"
 done

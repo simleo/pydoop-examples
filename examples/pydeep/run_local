@@ -1,0 +1,36 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+[ -n "${DEBUG:-}" ] && set -x
+this="${BASH_SOURCE-$0}"
+this_dir=$(cd -P -- "$(dirname -- "${this}")" && pwd -P)
+. "${this_dir}/../config.sh"
+. "${this_dir}/common.sh"
+
+[ ${PY_VER} -le 2 ] && die "ERROR: Python 3 required"
+
+export LIBHDFS_OPTS="-Xmx512m"
+
+pushd "${this_dir}"
+img_dir="flower_photos"
+bneck_dir="bottlenecks"
+train_output="trained_models"
+plots_dir="training_plots"
+test_output="test_results"
+img_url="http://download.tensorflow.org/example_images/${img_dir}.tgz"
+if [ ! -d "${img_dir}" ]; then
+    curl "${img_url}" | tar xz
+    if [ -n "${DEBUG:-}" ]; then
+	use_two_classes "${img_dir}"
+	downsample "${img_dir}"
+    fi
+fi
+ensure_dfs_home
+${HDFS} dfs -test -d "${img_dir}" || ${HADOOP} distcp -atomic "file://${PWD}/${img_dir}" "${img_dir}"
+${HDFS} dfs -rm -r -f "${bneck_dir}" "${train_output}" "${test_output}"
+
+OPTS=(  "--train-output" "${train_output}" "--bnecks-dir" "${bneck_dir}" )
+[ -n "${DEBUG:-}" ] && OPTS+=( "--log-level" "DEBUG" "--num-steps" "400")
+
+${PYTHON} local_retrain.py "${OPTS[@]}" "${img_dir}"
+popd
