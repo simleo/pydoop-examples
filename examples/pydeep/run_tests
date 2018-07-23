@@ -8,7 +8,9 @@ this_dir=$(cd -P -- "$(dirname -- "${this}")" && pwd -P)
 
 [ ${PY_VER} -le 2 ] && die "ERROR: Python 3 required"
 
+[ -n "${DEBUG:-}" ] && OPTS="-v" || OPTS=""
+
 export PYTHONPATH="${this_dir}:${PYTHONPATH:-}"
 pushd "${this_dir}/test"
-${PYTHON} test_common.py
+${PYTHON} -m unittest ${OPTS:-}
 popd
