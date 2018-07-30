@@ -36,6 +36,14 @@ class FileCache(defaultdict):
         return f
 
 
+class OutFileCache(defaultdict):
+
+    def __missing__(self, path):
+        f = hdfs.open(path, "wb")
+        self[path] = f
+        return f
+
+
 class BottleneckStore(object):
 
     def __init__(self, bneck_len, bneck_dtype):
@@ -154,16 +162,6 @@ class WholeFileReader(api.RecordReader):
         return float(len(self.paths) / self.n_paths)
 
 
-class SamplesReader(WholeFileReader):
-    """\
-    For each HDFS path in the input split, read its content C and emit an
-    (md5(C), C) record.
-    """
-    def path_to_kv(self, path):
-        _, data = super(SamplesReader, self).path_to_kv(path)
-        return md5(data).digest(), data
-
-
 class BottleneckProjectionsWriter(api.RecordWriter):
     """\
     Write out a binary record for each bottleneck. Expects a bytes object (md5
@@ -173,17 +171,17 @@ class BottleneckProjectionsWriter(api.RecordWriter):
     def __init__(self, context):
         super(BottleneckProjectionsWriter, self).__init__(context)
         self.logger = LOGGER.getChild("BottleneckProjectionsWriter")
-        out_path = context.get_default_work_file()
-        hdfs_user = context.job_conf.get("pydoop.hdfs.user", None)
-        self.file = hdfs.open(out_path, "wb", user=hdfs_user)
+        self.d, self.bn = context.get_default_work_file().rsplit("/", 1)
+        self.fcache = OutFileCache()
 
     def close(self):
-        self.logger.debug("closing open handles")
-        self.file.close()
-        self.file.fs.close()
+        for f in self.fcache.values():
+            f.close()
 
     def emit(self, key, value):
-        self.file.write(key + value.tobytes())
+        path = hdfs.path.join(self.d, key, self.bn)
+        checksum, bneck = value
+        self.fcache[path].write(checksum + bneck.tobytes())
 
 
 class BottleneckProjectionsReader(api.RecordReader):

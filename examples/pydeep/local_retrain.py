@@ -19,7 +19,7 @@ from pydeep.ioformats import BottleneckStore
 from pydeep.common import LOG_LEVELS
 
 from graph_setup import get_graph
-from genbnecks import map_input_files
+from genbnecks import list_images
 
 logging.basicConfig()
 LOGGER = logging.getLogger("local_retrain")
@@ -55,6 +55,14 @@ def make_parser():
     parser.add_argument("--log-level", metavar="|".join(LOG_LEVELS),
                         choices=LOG_LEVELS, default="INFO")
     return parser
+
+
+def map_input_files(input_dir):
+    ret = {}
+    for path in list_images(input_dir):
+        cls = path.rsplit("/", 2)[1]
+        ret.setdefault(cls, []).append(path)
+    return ret
 
 
 def calc_bottlenecks(model, img_map, out_dir):
