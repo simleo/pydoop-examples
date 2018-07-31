@@ -66,6 +66,7 @@ def main(argv=None):
     args.upload_file_to_cache = ['%s.py' % WORKER]
     args.python_zip = [zip_fn]
     args.do_not_use_java_record_reader = True
+    args.do_not_use_java_record_writer = True
     args.num_reducers = 0
 
     splits_path = os.path.join(args.input, '_' + uuid.uuid4().hex)

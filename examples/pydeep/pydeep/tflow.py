@@ -63,7 +63,7 @@ class Retrainer(object):
         layer_weights = tf.Variable(initial_value, name='final_weights')
         layer_biases = tf.Variable(tf.zeros([n_classes]), name='final_biases')
         logits = tf.matmul(self.bneck_input, layer_weights) + layer_biases
-        final_tensor = tf.nn.softmax(logits, name="final_tensor")
+        self.final_tensor = tf.nn.softmax(logits, name="final_tensor")
         cross_entropy = tf.nn.softmax_cross_entropy_with_logits_v2(
             labels=self.ground_truth_input, logits=logits
         )
@@ -72,9 +72,9 @@ class Retrainer(object):
         self.train_step = optimizer.minimize(
             self.cross_entropy_mean, name="train_step"
         )
-        self.prediction = tf.argmax(final_tensor, 1, name="prediction")
+        prediction = tf.argmax(self.final_tensor, 1, name="prediction")
         correct_prediction = tf.equal(
-            self.prediction, tf.argmax(self.ground_truth_input, 1)
+            prediction, tf.argmax(self.ground_truth_input, 1)
         )
         self.eval_step = tf.reduce_mean(
             tf.cast(correct_prediction, tf.float32), name="evaluation_step"
@@ -111,5 +111,5 @@ class Retrainer(object):
         g.add_to_collection(models.BNECK_INPUT_NAME, self.bneck_input)
         g.add_to_collection(models.GTRUTH_INPUT_NAME, self.ground_truth_input)
         g.add_to_collection(models.EVAL_STEP_NAME, self.eval_step)
-        g.add_to_collection(models.PREDICTION_NAME, self.prediction)
+        g.add_to_collection(models.FINAL_TENSOR_NAME, self.final_tensor)
         models.save_checkpoint(path)

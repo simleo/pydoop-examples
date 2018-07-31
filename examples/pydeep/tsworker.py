@@ -1,19 +1,17 @@
 """\
 Test each model on the whole dataset.
-
-Input key: path to the serialized model
-Input value: serialized model as a byte string
 """
 
 import logging
 
 import pydoop.mapreduce.api as api
 import pydoop.mapreduce.pipes as pp
+import pydoop.hdfs as hdfs
 import tensorflow as tf
 
 from pydeep.ioformats import WholeFileReader, BottleneckStore
+import pydeep.arrayblob as arrayblob
 import pydeep.common as common
-
 import pydeep.models as models
 
 logging.basicConfig()
@@ -24,6 +22,31 @@ class PathNameReader(WholeFileReader):
 
     def path_to_kv(self, path):
         return None, path
+
+
+class TestResultsWriter(api.RecordWriter):
+
+    def __init__(self, context):
+        super(TestResultsWriter, self).__init__(context)
+        tab_fn = context.get_default_work_file()
+        self.d = tab_fn.rsplit("/", 1)[0]
+        self.tabf = hdfs.open(tab_fn, "wt")
+
+    def close(self):
+        self.tabf.close()
+
+    def emit(self, key, value):
+        path, (test_accuracy, float_predictions) = key, value
+        # tags are unique because they come from the same input dir
+        tag = path.rsplit("/", 1)[1].rsplit(".", 1)[0]
+        self.tabf.write("%s\t%s\n" % (tag, str(test_accuracy)))
+        data_fn = hdfs.path.join(self.d, "%s.data" % tag)
+        meta_fn = hdfs.path.join(self.d, "%s.meta" % tag)
+        shape, dtype = float_predictions[0].shape, float_predictions[0].dtype
+        with hdfs.open(data_fn, "wb") as df, hdfs.open(meta_fn, "wt") as mf:
+            writer = arrayblob.Writer(df, mf, shape, dtype)
+            for p in float_predictions:
+                writer.write(p)
 
 
 class Mapper(api.Mapper):
@@ -51,20 +74,24 @@ class Mapper(api.Mapper):
         with tf.Session(graph=tf.Graph()) as session:
             models.load_checkpoint(context.value)
             graph = session.graph
-            eval_step, prediction, bneck_input, gtruth_input = (
+            eval_step, final_tensor, bneck_input, gtruth_input = (
                 self.model.get_eval_step(graph),
-                self.model.get_prediction(graph),
+                self.model.get_final_tensor(graph),
                 self.model.get_bneck_input(graph),
                 self.model.get_gtruth_input(graph),
             )
-            test_accuracy, predictions = session.run(
-                [eval_step, prediction],
+            test_accuracy, float_predictions = session.run(
+                [eval_step, final_tensor],
                 feed_dict={bneck_input: self.bnecks,
                            gtruth_input: self.gtruths})
-        context.emit(context.value, str(test_accuracy))
+        context.emit(context.value, (test_accuracy, float_predictions))
 
 
-factory = pp.Factory(mapper_class=Mapper, record_reader_class=PathNameReader)
+factory = pp.Factory(
+    mapper_class=Mapper,
+    record_reader_class=PathNameReader,
+    record_writer_class=TestResultsWriter,
+)
 
 
 def __main__():

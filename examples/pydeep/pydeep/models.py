@@ -28,7 +28,7 @@ MUL_IMAGE_NAME = "mul_image_name"
 BNECK_INPUT_NAME = "bottleneck_input"
 GTRUTH_INPUT_NAME = "ground_truth_input"
 EVAL_STEP_NAME = "eval_step"
-PREDICTION_NAME = "prediction"
+FINAL_TENSOR_NAME = "final_tensor"
 
 
 Input = namedtuple("Input", "width, height, depth, mean, std")
@@ -90,8 +90,8 @@ class Model(namedtuple("Model", "name, url, filename, input, tensor_names")):
     def get_eval_step(self, graph):
         return graph.get_collection(EVAL_STEP_NAME)[0]
 
-    def get_prediction(self, graph):
-        return graph.get_collection(PREDICTION_NAME)[0]
+    def get_final_tensor(self, graph):
+        return graph.get_collection(FINAL_TENSOR_NAME)[0]
 
     def load(self, path):
         graph_def = tf.GraphDef()

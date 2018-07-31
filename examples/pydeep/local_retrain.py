@@ -175,11 +175,12 @@ def main(argv=sys.argv):
         test_bneck_map, args.test_batch_size, labels
     )
     test_accuracy, predictions = retrainer.session.run(
-        [retrainer.eval_step, retrainer.prediction],
+        [retrainer.eval_step, retrainer.final_tensor],
         feed_dict={retrainer.bneck_input: test_bnecks,
                    retrainer.ground_truth_input: test_gtruths})
     print("test_accuracy: %f%%" % (100 * test_accuracy))
     retrainer.close_session()
+    # TODO: output predictions and/or misclassified images
 
 
 if __name__ == "__main__":
