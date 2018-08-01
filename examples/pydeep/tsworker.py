@@ -63,11 +63,12 @@ class Mapper(api.Mapper):
         self.bneck_store = BottleneckStore(
             top_dir, bneck_tensor.shape[1].value, bneck_tensor.dtype
         )
-        # get *all* bottlenecks
-        bneck_map = self.bneck_store.get_bnecks()
+        bneck_map = self.bneck_store.get_all_bnecks()
         self.bnecks, self.gtruths = BottleneckStore.bnecks_map_to_vectors(
             bneck_map, BottleneckStore.assign_labels(top_dir)
         )
+        # FIXME: use the checksums?
+        self.bnecks = [_[1] for _ in self.bnecks]
 
     def map(self, context):
         LOGGER.info("testing %s" % (context.value))

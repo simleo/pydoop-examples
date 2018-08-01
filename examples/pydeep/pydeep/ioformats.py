@@ -6,6 +6,7 @@ size in bytes.
 """
 
 from hashlib import md5
+import functools
 import io
 import logging
 import random
@@ -54,6 +55,22 @@ class BottleneckStore(object):
         self.record_size = CHECKSUM_SIZE + self.bneck_size
         self.dtype = bneck_dtype.as_numpy_dtype
         self.__posmap = None
+
+    def get_all_bnecks(self):
+        ret = {}
+        C, R = CHECKSUM_SIZE, self.record_size
+        deser = functools.partial(np.frombuffer, dtype=self.dtype)
+        for stat in hdfs.lsl(self.top_dir):
+            if stat["kind"] != "directory":
+                continue
+            cls = hdfs.path.basename(stat["name"])
+            bnecks = ret[cls] = []
+            for s in hdfs.lsl(stat["name"]):
+                with hdfs.open(s["name"], "rb") as f:
+                    data = f.read()
+                bnecks.extend([(data[i: i + C], deser(data[i + C: i + R]))
+                               for i in range(0, s["size"], R)])
+        return ret
 
     def get_bnecks(self, posmap=None, checksums=False):
         if posmap is None:
