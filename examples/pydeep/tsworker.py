@@ -61,10 +61,10 @@ class Mapper(api.Mapper):
         bneck_tensor = self.model.get_bottleneck(graph)
         del graph
         self.bneck_store = BottleneckStore(
-            bneck_tensor.shape[1].value, bneck_tensor.dtype
+            top_dir, bneck_tensor.shape[1].value, bneck_tensor.dtype
         )
         # get *all* bottlenecks
-        bneck_map = self.bneck_store.get_bnecks(top_dir)
+        bneck_map = self.bneck_store.get_bnecks()
         self.bnecks, self.gtruths = BottleneckStore.bnecks_map_to_vectors(
             bneck_map, BottleneckStore.assign_labels(top_dir)
         )

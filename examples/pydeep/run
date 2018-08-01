@@ -16,5 +16,6 @@ ${PYTHON} retrain_subsets.py --num-steps "${NUM_STEPS}" --num-maps "${RETRAIN_NU
 ${PYTHON} plot_training.py "${TRAINED_MODELS_DIR}" "${PLOTS_DIR}"
 ${PYTHON} test_subsets.py --bnecks-dir "${BNECKS_DIR}" --num-maps "${TEST_NUM_MAPS}" --log-level "${LOG_LEVEL}" "${TRAINED_MODELS_DIR}" "${TEST_OUTPUT_DIR}"
 ${HDFS} dfs -cat "${TEST_OUTPUT_DIR}"/part* | sort
+${HDFS} dfs -ls -C "${TEST_OUTPUT_DIR}" | grep -E 'part-m-[0-9]+$' | xargs hdfs dfs -cat | sort
 ./run_dump_weights
 popd

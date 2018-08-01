@@ -90,9 +90,9 @@ def main(argv=None):
     graph = model.load_prep()
     bneck_tensor = model.get_bottleneck(graph)
     bneck_store = ioformats.BottleneckStore(
-        bneck_tensor.shape[1].value, bneck_tensor.dtype
+        args.input, bneck_tensor.shape[1].value, bneck_tensor.dtype
     )
-    bneck_map = bneck_store.build_map(args.input)
+    bneck_map = bneck_store.posmap
     LOGGER.info("%d subdirs, %r bottlenecks" %
                 (len(bneck_map), [len(_) for _ in bneck_map.values()]))
     splits_path = os.path.join(args.input, '_' + uuid.uuid4().hex)

@@ -46,24 +46,25 @@ class OutFileCache(defaultdict):
 
 class BottleneckStore(object):
 
-    def __init__(self, bneck_len, bneck_dtype):
+    def __init__(self, top_dir, bneck_len, bneck_dtype):
         bneck_dtype = tf.as_dtype(bneck_dtype)
+        self.top_dir = top_dir.rstrip("/")
         self.bneck_len = bneck_len
         self.bneck_size = bneck_dtype.size * self.bneck_len
         self.record_size = CHECKSUM_SIZE + self.bneck_size
         self.dtype = bneck_dtype.as_numpy_dtype
+        self.__posmap = None
 
-    def get_bnecks(self, top_dir, posmap=None, checksums=False):
-        top_dir = top_dir.rstrip("/")
+    def get_bnecks(self, posmap=None, checksums=False):
         if posmap is None:
-            posmap = self.build_map(top_dir)
+            posmap = self.posmap
         fcache = FileCache()
         ret = {}
         bneck_size, dtype = self.bneck_size, self.dtype
         for cls, positions in posmap.items():
             bnecks = ret[cls] = []
             for name, offset in positions:
-                path = "%s/%s/%s" % (top_dir, cls, name)
+                path = "%s/%s/%s" % (self.top_dir, cls, name)
                 chunk = fcache[path].pread(offset + CHECKSUM_SIZE, bneck_size)
                 bneck = np.frombuffer(chunk, dtype)
                 if checksums:
@@ -75,7 +76,8 @@ class BottleneckStore(object):
             f.close()
         return ret
 
-    def build_map(self, top_dir):
+    @property
+    def posmap(self):
         """\
         For each subdir (corresponding to an image class), build the full
         list of (filename, offset) pair where each bottleneck dump can be
@@ -92,10 +94,12 @@ class BottleneckStore(object):
             ...
         ]}
         """
+        if self.__posmap:
+            return self.__posmap
         m = {}
         basename = hdfs.path.basename
         with hdfs.hdfs() as fs:
-            for stat in fs.list_directory(top_dir):
+            for stat in fs.list_directory(self.top_dir):
                 if stat['kind'] != 'directory':
                     continue
                 subd = stat['name']
@@ -108,6 +112,7 @@ class BottleneckStore(object):
                     for i in range(0, s["size"], self.record_size):
                         positions.append((bname, i))
                 m[basename(subd)] = positions
+        self.__posmap = m
         return m
 
     @staticmethod
@@ -199,14 +204,14 @@ class BottleneckProjectionsReader(api.RecordReader):
         model = models.get_model_info(jc[common.GRAPH_ARCH_KEY])
         graph = model.load_prep()
         bneck_tensor = model.get_bottleneck(graph)
-        self.bneck_store = BottleneckStore(
-            bneck_tensor.shape[1].value, bneck_tensor.dtype
-        )
         self.n_steps = jc.get_int(common.NUM_STEPS_KEY)
         top_dir = jc.get(common.BNECKS_DIR_KEY)
         val_fraction = jc.get_int(common.VALIDATION_PERCENT_KEY) / 100
         # get *all* bottlenecks for this split, assuming they fit in memory
-        bneck_map = self.bneck_store.get_bnecks(top_dir, posmap=split.payload)
+        self.bneck_store = BottleneckStore(
+            top_dir, bneck_tensor.shape[1].value, bneck_tensor.dtype
+        )
+        bneck_map = self.bneck_store.get_bnecks(posmap=split.payload)
         self.val_bneck_map, self.train_bneck_map = {}, {}
         while bneck_map:
             c, bnecks = bneck_map.popitem()

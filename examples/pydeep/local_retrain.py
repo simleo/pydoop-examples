@@ -87,10 +87,10 @@ def get_bneck_maps(model, bnecks_dir, test_percent, val_percent):
     graph = model.load_prep()
     bneck_tensor = model.get_bottleneck(graph)
     bneck_store = BottleneckStore(
-        bneck_tensor.shape[1].value, bneck_tensor.dtype
+        bnecks_dir, bneck_tensor.shape[1].value, bneck_tensor.dtype
     )
     del graph
-    bneck_map = bneck_store.get_bnecks(bnecks_dir)
+    bneck_map = bneck_store.get_bnecks()
     for bnecks in bneck_map.values():
         random.shuffle(bnecks)
     test_bneck_map = {c: [] for c in bneck_map}
