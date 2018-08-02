@@ -5,7 +5,6 @@ Test models trained with retrain_subsets.py on the whole dataset.
 import argparse
 import logging
 import os
-import re
 import shutil
 import sys
 import tempfile
@@ -41,7 +40,7 @@ def generate_input_splits(N, input_dir, splits_path):
     Assign a subset of the trained models to each split.
     """
     paths = [_ for _ in hdfs.ls(input_dir) if
-             re.match(r"^part-m-\d+\.zip$", hdfs.path.basename(_))]
+             hdfs.path.basename(_).endswith(".zip")]
     if N > len(paths):
         N = len(paths)
         LOGGER.warn("Not enough input models, will only do %d splits" % N)

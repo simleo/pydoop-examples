@@ -73,7 +73,7 @@ def main(argv=sys.argv):
         except IOError as e:
             return "ERROR: %s: %s" % (args.stats_path, e)
         paths = [_ for _ in ls if
-                 re.match(r"^part-m-\d+$", hdfs.path.basename(_))]
+                 re.match(r".*part-m-\d+$", hdfs.path.basename(_))]
     gen_plots(paths, args.out_dir)
 
 
