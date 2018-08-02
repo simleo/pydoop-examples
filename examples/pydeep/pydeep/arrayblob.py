@@ -57,3 +57,9 @@ class Reader(object):
             return
         self.count += n
         self.f.seek(self.count * self.recsize)
+
+    def to_npz(self, outf, labels=None):
+        if labels:
+            np.savez(outf, **dict(zip(labels, self)))
+        else:
+            np.savez(outf, *self)
