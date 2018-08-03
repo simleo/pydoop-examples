@@ -150,7 +150,33 @@ class BottleneckStore(object):
         return all_bnecks, all_ground_truths
 
 
-class WholeFileReader(api.RecordReader):
+# This is probably general enough for inclusion in Pydoop
+class OpaqueListReader(api.RecordReader):
+    """\
+    Base reader for OpaqueInputSplit-based formats where each split is a list.
+    """
+    def __init__(self, context):
+        super(OpaqueListReader, self).__init__(context)
+        raw_split = context.get_input_split(raw=True)
+        split = OpaqueInputSplit().read(io.BytesIO(raw_split))
+        self.items = split.payload
+        self.n_items = len(self.items)
+
+    def next(self):
+        try:
+            item = self.items.pop()
+        except IndexError:
+            raise StopIteration
+        return self.item_to_kv(item)
+
+    def item_to_kv(self, item):
+        return None, item
+
+    def get_progress(self):
+        return float(len(self.items) / self.n_items)
+
+
+class WholeFileReader(OpaqueListReader):
     """\
     Assumes input split = list of HDFS file paths. Reads the *whole* content C
     of each file (the user is responsible for ensuring this fits in memory)
@@ -158,30 +184,15 @@ class WholeFileReader(api.RecordReader):
     """
     def __init__(self, context):
         super(WholeFileReader, self).__init__(context)
-        self.logger = LOGGER.getChild("WholeFileReader")
-        raw_split = context.get_input_split(raw=True)
-        self.isplit = OpaqueInputSplit().read(io.BytesIO(raw_split))
-        self.paths = self.isplit.payload
-        self.n_paths = len(self.paths)
         self.fs = hdfs.hdfs()
 
     def close(self):
         self.fs.close()
 
-    def next(self):
-        try:
-            path = self.paths.pop()
-        except IndexError:
-            raise StopIteration
-        return self.path_to_kv(path)
-
-    def path_to_kv(self, path):
-        with self.fs.open_file(path, 'rb') as f:
+    def item_to_kv(self, item):
+        with self.fs.open_file(item, 'rb') as f:
             data = f.read()
-        return path, data
-
-    def get_progress(self):
-        return float(len(self.paths) / self.n_paths)
+        return item, data
 
 
 class BottleneckProjectionsWriter(api.RecordWriter):

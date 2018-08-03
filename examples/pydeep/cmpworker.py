@@ -1,52 +1,59 @@
 """\
-Test each model on the whole dataset.
+Compare pairs of models.
 """
 
 import logging
 
+import numpy as np
 import pydoop.mapreduce.api as api
 import pydoop.mapreduce.pipes as pp
 import pydoop.hdfs as hdfs
 import tensorflow as tf
 
-from pydeep.ioformats import WholeFileReader, BottleneckStore
+from pydeep.ioformats import OpaqueListReader, BottleneckStore
 import pydeep.arrayblob as arrayblob
 import pydeep.common as common
 import pydeep.models as models
 
 logging.basicConfig()
-LOGGER = logging.getLogger("tsworker")
+LOGGER = logging.getLogger("cmpworker")
 
 
-class PathNameReader(WholeFileReader):
+# TODO: generalize
+def cmp_predictions(p1, p2):
+    """\
+    Compute a distance between two sets of predictions.
 
-    def item_to_kv(self, path):
-        return None, path
+    Assumes p1, p2 are n_images x n_classes arrays, so row i =
+    prediction (as a vector of probabilities for each class) for img i.
+    """
+    # Euclidean distance
+    return np.linalg.norm(p1 - p2, axis=1)
 
 
-class TestResultsWriter(api.RecordWriter):
+class Writer(api.RecordWriter):
 
     def __init__(self, context):
-        super(TestResultsWriter, self).__init__(context)
-        tab_fn = context.get_default_work_file()
-        self.d = tab_fn.rsplit("/", 1)[0]
-        self.tabf = hdfs.open(tab_fn, "wt")
+        super(Writer, self).__init__(context)
+        base_fn = context.get_default_work_file()
+        self.tabf = hdfs.open(base_fn, "wt")
+        self.df = hdfs.open("%s.data" % base_fn, "wb")
+        self.mf = hdfs.open("%s.meta" % base_fn, "wt")
+        self.writer = None
 
     def close(self):
-        self.tabf.close()
+        for f in self.tabf, self.df, self.mf:
+            f.close()
 
     def emit(self, key, value):
-        path, (test_accuracy, float_predictions) = key, value
+        (m1_path, m2_path), (acc1, acc2, d) = key, value
         # tags are unique because they come from the same input dir
-        tag = path.rsplit("/", 1)[1].rsplit(".", 1)[0]
-        self.tabf.write("%s\t%s\n" % (tag, str(test_accuracy)))
-        data_fn = hdfs.path.join(self.d, "%s.data" % tag)
-        meta_fn = hdfs.path.join(self.d, "%s.meta" % tag)
-        shape, dtype = float_predictions[0].shape, float_predictions[0].dtype
-        with hdfs.open(data_fn, "wb") as df, hdfs.open(meta_fn, "wt") as mf:
-            writer = arrayblob.Writer(df, mf, shape, dtype)
-            for p in float_predictions:
-                writer.write(p)
+        t1 = m1_path.rsplit("/", 1)[1].rsplit(".", 1)[0]
+        t2 = m2_path.rsplit("/", 1)[1].rsplit(".", 1)[0]
+        self.tabf.write("%s\t%s\t%s\t%s\n" % (t1, str(acc1), t2, str(acc2)))
+        if self.writer is None:
+            self.writer = arrayblob.Writer(self.df, self.mf, d.shape, d.dtype)
+        self.writer.write(d)
 
 
 class Mapper(api.Mapper):
@@ -71,9 +78,15 @@ class Mapper(api.Mapper):
         self.bnecks = [_[1] for _ in self.bnecks]
 
     def map(self, context):
-        LOGGER.info("testing %s" % (context.value))
+        m1, m2 = context.value
+        LOGGER.info("%s vs %s" % (m1, m2))
+        acc1, p1 = self.__run_model(m1)
+        acc2, p2 = self.__run_model(m2)
+        context.emit(context.value, (acc1, acc2, cmp_predictions(p1, p2)))
+
+    def __run_model(self, model_path):
         with tf.Session(graph=tf.Graph()) as session:
-            models.load_checkpoint(context.value)
+            models.load_checkpoint(model_path)
             graph = session.graph
             eval_step, final_tensor, bneck_input, gtruth_input = (
                 self.model.get_eval_step(graph),
@@ -85,13 +98,14 @@ class Mapper(api.Mapper):
                 [eval_step, final_tensor],
                 feed_dict={bneck_input: self.bnecks,
                            gtruth_input: self.gtruths})
-        context.emit(context.value, (test_accuracy, float_predictions))
+        # float_predictions.shape = (n_images, n_classes)
+        return test_accuracy, float_predictions
 
 
 factory = pp.Factory(
     mapper_class=Mapper,
-    record_reader_class=PathNameReader,
-    record_writer_class=TestResultsWriter,
+    record_reader_class=OpaqueListReader,
+    record_writer_class=Writer,
 )
 
 

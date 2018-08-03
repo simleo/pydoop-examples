@@ -193,7 +193,7 @@ def collate_mapred_output(output_dir):
 
 class Reader(ioformats.WholeFileReader):
 
-    def path_to_kv(self, path):
+    def item_to_kv(self, path):
         return None, path
 
 

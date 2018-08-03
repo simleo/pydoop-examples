@@ -21,6 +21,8 @@ utc_timestamp_ns () {
 export -f use_two_classes downsample utc_timestamp_ns
 
 export BNECKS_DIR="${BNECKS_DIR:-bottlenecks}"
+export CMP_OUTPUT_DIR="${CMP_OUTPUT_DIR:-cmp_results}"
+export CMP_NUM_MAPS="${CMP_NUM_MAPS-2}"
 export GENBNECKS_NUM_MAPS="${GENBNECKS_NUM_MAPS-4}"
 export LIBHDFS_OPTS="${LIBHDFS_OPTS:--Xmx512m}"
 export NUM_STEPS="${NUM_STEPS:-400}"
