@@ -40,11 +40,9 @@ class TestResultsWriter(api.RecordWriter):
         # tags are unique because they come from the same input dir
         tag = path.rsplit("/", 1)[1].rsplit(".", 1)[0]
         self.tabf.write("%s\t%s\n" % (tag, str(test_accuracy)))
-        data_fn = hdfs.path.join(self.d, "%s.data" % tag)
-        meta_fn = hdfs.path.join(self.d, "%s.meta" % tag)
+        name = hdfs.path.join(self.d, tag)
         shape, dtype = float_predictions[0].shape, float_predictions[0].dtype
-        with hdfs.open(data_fn, "wb") as df, hdfs.open(meta_fn, "wt") as mf:
-            writer = arrayblob.Writer(df, mf, shape, dtype)
+        with arrayblob.Writer(name, shape, dtype) as writer:
             for p in float_predictions:
                 writer.write(p)
 

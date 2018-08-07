@@ -35,15 +35,14 @@ class Writer(api.RecordWriter):
 
     def __init__(self, context):
         super(Writer, self).__init__(context)
-        base_fn = context.get_default_work_file()
-        self.tabf = hdfs.open(base_fn, "wt")
-        self.df = hdfs.open("%s.data" % base_fn, "wb")
-        self.mf = hdfs.open("%s.meta" % base_fn, "wt")
+        self.base_fn = context.get_default_work_file()
+        self.tabf = hdfs.open(self.base_fn, "wt")
         self.writer = None
 
     def close(self):
-        for f in self.tabf, self.df, self.mf:
-            f.close()
+        self.tabf.close()
+        if self.writer is not None:
+            self.writer.close()
 
     def emit(self, key, value):
         (m1_path, m2_path), (acc1, acc2, d) = key, value
@@ -52,7 +51,7 @@ class Writer(api.RecordWriter):
         t2 = m2_path.rsplit("/", 1)[1].rsplit(".", 1)[0]
         self.tabf.write("%s\t%s\t%s\t%s\n" % (t1, str(acc1), t2, str(acc2)))
         if self.writer is None:
-            self.writer = arrayblob.Writer(self.df, self.mf, d.shape, d.dtype)
+            self.writer = arrayblob.Writer(self.base_fn, d.shape, d.dtype)
         self.writer.write(d)
 
 

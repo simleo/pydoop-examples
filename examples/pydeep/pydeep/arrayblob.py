@@ -2,21 +2,34 @@
 Minimal protocol for serializing many n-dimensional arrays of the same type.
 """
 
+import io
+
 import numpy as np
+import pydoop.hdfs as hdfsio
 
 
 class Writer(object):
     """\
-    Writes arrays with the given shape and dtype. f must be open for writing
-    bytes and metaf for writing text.
+    Writes arrays with the given shape and dtype. Creates a `name.data`
+    binary data file and a `name.meta` text metadata file.
     """
-    def __init__(self, f, metaf, shape, dtype):
-        self.f = f
+    def __init__(self, name, shape, dtype, hdfs=True):
+        open = hdfsio.open if hdfs else io.open
         meta = [np.dtype(dtype).str] + ["%d" % _ for _ in shape]
-        metaf.write("\t".join(meta) + "\n")
-        metaf.flush()
+        with open("%s.meta" % name, "wt") as metaf:
+            metaf.write("\t".join(meta) + "\n")
         self.shape = shape
         self.dtype = dtype
+        self.f = open("%s.data" % name, "wb")
+
+    def close(self):
+        self.f.close()
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        self.close()
 
     def write(self, a):
         if a.shape != self.shape or a.dtype != self.dtype:
@@ -26,17 +39,28 @@ class Writer(object):
 
 class Reader(object):
     """\
-    Reads arrays stored with arrayblob.Writer. f must be open for
-    reading bytes and metaf for reading text.
+    Reads arrays stored with arrayblob.Writer. Looks for a `name.data`
+    binary data file and a `name.meta` text metadata file.
     """
-    def __init__(self, f, metaf):
-        self.f = f
-        meta = metaf.read().strip().split("\t")
+    def __init__(self, name, hdfs=True):
+        open = hdfsio.open if hdfs else io.open
+        with open("%s.meta" % name, "rt") as metaf:
+            meta = metaf.read().strip().split("\t")
         self.dtype = np.dtype(meta.pop(0))
         self.shape = tuple(int(_) for _ in meta)
         self.recsize = int(self.dtype.itemsize * np.prod(self.shape))
         self.count = 0
         self.__over = False
+        self.f = open("%s.data" % name, "rb")
+
+    def close(self):
+        self.f.close()
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        self.close()
 
     def __next__(self):
         data = self.f.read(self.recsize)
