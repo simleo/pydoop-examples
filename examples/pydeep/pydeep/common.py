@@ -18,19 +18,39 @@ PYDOOP_EXTERNALSPLITS_URI_KEY = 'pydoop.mapreduce.pipes.externalsplits.uri'
 NUM_MAPS_KEY = 'mapreduce.job.maps'
 
 
+def balanced_parts(L, N):
+    """\
+    Find N numbers that sum up to L and are as close as possible to each other.
+
+    >>> balanced_parts(10, 3)
+    [4, 3, 3]
+    """
+    if not (1 <= N <= L):
+        raise ValueError("number of partitions must be between 1 and %d" % L)
+    q, r = divmod(L, N)
+    return r * [q + 1] + (N - r) * [q]
+
+
+def balanced_chunks(L, N):
+    """\
+    Same as balanced_part, but as an iterator through (offset, length) pairs.
+
+    >>> list(balanced_chunks(10, 3))
+    [(0, 4), (4, 3), (7, 3)]
+    """
+    lengths = balanced_parts(L, N)
+    return zip(itertools.accumulate([0] + lengths), lengths)
+
+
 def balanced_split(seq, N):
     """\
     Partition seq into exactly N balanced groups.
 
-    list(range(10)), 3 ==> [0, 1, 2, 3], [4, 5, 6], [7, 8, 9]
-
     Returns an iterator through the groups.
+
+    >>> seq = list(range(10))
+    >>> list(balanced_split(seq, 3))
+    [[0, 1, 2, 3], [4, 5, 6], [7, 8, 9]]
     """
-    if N < 1:
-        raise ValueError("number of groups must be strictly positive")
-    if N > len(seq):
-        raise ValueError("not enough elements in sequence")
-    q, r = divmod(len(seq), N)
-    lengths = r * [q + 1] + (N - r) * [q]
-    for end, l in zip(itertools.accumulate(lengths), lengths):
-        yield seq[end - l: end]
+    for offset, length in balanced_chunks(len(seq), N):
+        yield seq[offset: offset + length]

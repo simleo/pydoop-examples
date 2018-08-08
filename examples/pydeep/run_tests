@@ -10,7 +10,11 @@ this_dir=$(cd -P -- "$(dirname -- "${this}")" && pwd -P)
 
 [ -n "${DEBUG:-}" ] && OPTS="-v" || OPTS=""
 
+pushd "${this_dir}"
+# doctest is REALLY verbose. Do not pass OPTS
+${PYTHON} -m doctest pydeep/*.py
 export PYTHONPATH="${this_dir}:${PYTHONPATH:-}"
 pushd "${this_dir}/test"
-${PYTHON} -m unittest ${OPTS:-}
+${PYTHON} -m unittest ${OPTS:-} "$@"
+popd
 popd
