@@ -8,6 +8,19 @@ import numpy as np
 import pydoop.hdfs as hdfsio
 
 
+def write_meta(f, dtype, shape):
+    meta = [np.dtype(dtype).str] + ["%d" % _ for _ in shape]
+    f.write("\t".join(meta) + "\n")
+
+
+def read_meta(f):
+    meta = f.read().strip().split("\t")
+    dtype = np.dtype(meta.pop(0))
+    shape = tuple(int(_) for _ in meta)
+    recsize = int(dtype.itemsize * np.prod(shape))
+    return dtype, shape, recsize
+
+
 class Writer(object):
     """\
     Writes arrays with the given shape and dtype. Creates a `name.data`
@@ -15,9 +28,8 @@ class Writer(object):
     """
     def __init__(self, name, shape, dtype, hdfs=True):
         open = hdfsio.open if hdfs else io.open
-        meta = [np.dtype(dtype).str] + ["%d" % _ for _ in shape]
-        with open("%s.meta" % name, "wt") as metaf:
-            metaf.write("\t".join(meta) + "\n")
+        with open("%s.meta" % name, "wt") as f:
+            write_meta(f, dtype, shape)
         self.shape = shape
         self.dtype = dtype
         self.f = open("%s.data" % name, "wb")
@@ -44,11 +56,8 @@ class Reader(object):
     """
     def __init__(self, name, hdfs=True):
         open = hdfsio.open if hdfs else io.open
-        with open("%s.meta" % name, "rt") as metaf:
-            meta = metaf.read().strip().split("\t")
-        self.dtype = np.dtype(meta.pop(0))
-        self.shape = tuple(int(_) for _ in meta)
-        self.recsize = int(self.dtype.itemsize * np.prod(self.shape))
+        with open("%s.meta" % name, "rt") as f:
+            self.dtype, self.shape, self.recsize = read_meta(f)
         self.count = 0
         self.__over = False
         self.f = open("%s.data" % name, "rb")

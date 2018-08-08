@@ -7,6 +7,7 @@ BNECKS_DIR_KEY = 'pydeep.bottlenecks.dir'
 EVAL_STEP_INTERVAL_KEY = 'tensorflow.eval.step.interval'
 GRAPH_ARCH_KEY = 'tensorflow.graph.architecture'
 LEARNING_RATE_KEY = 'tensorflow.learning.rate'
+MODELS_DIR_KEY = "pydeep.models.dir"
 NUM_STEPS_KEY = 'tensorflow.train.num.steps'
 SEED_KEY = 'pydeep.random.seed'
 TRAIN_BATCH_SIZE_KEY = 'tensorflow.train.batch.size'

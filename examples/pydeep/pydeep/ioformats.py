@@ -18,6 +18,7 @@ import pydoop.hdfs as hdfs
 from pydoop.utils.serialize import OpaqueInputSplit
 import tensorflow as tf
 
+import pydeep.arrayblob as arrayblob
 import pydeep.common as common
 import pydeep.models as models
 
@@ -173,7 +174,7 @@ class OpaqueListReader(api.RecordReader):
         return None, item
 
     def get_progress(self):
-        return float(len(self.items) / self.n_items)
+        return 1 - float(len(self.items) / self.n_items)
 
 
 class WholeFileReader(OpaqueListReader):
@@ -276,3 +277,35 @@ class BottleneckProjectionsReader(api.RecordReader):
 
     def get_progress(self):
         return min(self.step_count / self.n_steps, 1.0)
+
+
+class ArrayBlobReader(api.RecordReader):
+
+    def __init__(self, context):
+        super(ArrayBlobReader, self).__init__(context)
+        self.logger = LOGGER.getChild("ArrayBlobReader")
+        try:
+            self.logger.setLevel(context.job_conf[common.LOG_LEVEL_KEY])
+        except KeyError:
+            pass
+        raw_split = context.get_input_split(raw=True)
+        split = OpaqueInputSplit().read(io.BytesIO(raw_split))
+        name, start_from, self.n_records = split.payload
+        self.logger.debug(
+            "%r: %d records starting from %d", name, self.n_records, start_from
+        )
+        self.reader = arrayblob.Reader(name)
+        self.reader.skip(start_from)
+        self.counter = 0
+
+    def close(self):
+        self.reader.close()
+
+    def next(self):
+        if self.counter >= self.n_records:
+            raise StopIteration
+        self.counter += 1
+        return None, next(self.reader)
+
+    def get_progress(self):
+        return float(self.counter / self.n_records)
