@@ -9,17 +9,15 @@ this_dir=$(cd -P -- "$(dirname -- "${this}")" && pwd -P)
 
 [ ${PY_VER} -le 2 ] && die "ERROR: Python 3 required"
 
-input_dir="keras_input"
-output_dir="keras_output"
 models_tar="models.tar"
 
 pushd "${this_dir}"
 wd=$(mktemp -d)
 ${PYTHON} dummy_keras_models.py "${wd}"
-${HDFS} dfs -rm -r -f "${input_dir}" "${output_dir}" "${models_tar}"
-${HDFS} dfs -mkdir -p "${input_dir}"
-${HDFS} dfs -put "${wd}"/mnist_test* "${input_dir}/"
+${HDFS} dfs -rm -r -f "${KERAS_INPUT_DIR}" "${KERAS_OUTPUT_DIR}" "${models_tar}"
+${HDFS} dfs -mkdir -p "${KERAS_INPUT_DIR}"
+${HDFS} dfs -put "${wd}"/mnist_test* "${KERAS_INPUT_DIR}/"
 ${HDFS} dfs -put "${wd}"/models.tar models.tar
 rm -rf "${wd}"
-${PYTHON} keras_predictions.py "${input_dir}" "${output_dir}"
+${PYTHON} keras_predictions.py --maps-per-file "${KERAS_NUM_MAPS}" "${KERAS_INPUT_DIR}" "${KERAS_OUTPUT_DIR}"
 popd

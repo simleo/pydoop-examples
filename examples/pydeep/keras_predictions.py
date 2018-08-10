@@ -40,30 +40,11 @@ def make_parser():
     return parser
 
 
-def map_blobs(input_dir):
-    m = {_["name"].rsplit("/", 1)[1]: _ for _ in hdfs.lsl(input_dir)}
-    rval = {}
-    for basename, stat in m.items():
-        if stat["kind"] != "file" or basename.startswith("_"):
-            continue
-        base, ext = hdfs.path.splitext(basename)
-        if ext == ".data":
-            meta_bn = "%s.meta" % base
-            if meta_bn not in m:
-                raise RuntimeError("metafile for %r not found" % (basename,))
-            with hdfs.open(m[meta_bn]["name"], "rt") as f:
-                dtype, shape, recsize = arrayblob.read_meta(f)
-            n_records, r = divmod(stat["size"], recsize)
-            assert r == 0
-            rval[base] = n_records
-    return rval
-
-
 def generate_input_splits(N, input_dir, splits_path):
     """\
     For each input file, assign a subset of arrays to each split.
     """
-    m = map_blobs(input_dir)
+    m = arrayblob.map_blobs(input_dir)
     LOGGER.debug("%d files, %r records", len(m), sorted(m.values()))
     splits = []
     for base, L in m.items():

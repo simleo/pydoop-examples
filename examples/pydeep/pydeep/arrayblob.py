@@ -96,3 +96,22 @@ class Reader(object):
             np.savez(outf, **dict(zip(labels, self)))
         else:
             np.savez(outf, *self)
+
+
+def map_blobs(dir_path):
+    m = {_["name"].rsplit("/", 1)[1]: _ for _ in hdfsio.lsl(dir_path)}
+    rval = {}
+    for basename, stat in m.items():
+        if stat["kind"] != "file" or basename.startswith("_"):
+            continue
+        base, ext = hdfsio.path.splitext(basename)
+        if ext == ".data":
+            meta_bn = "%s.meta" % base
+            if meta_bn not in m:
+                raise RuntimeError("metafile for %r not found" % (basename,))
+            with hdfsio.open(m[meta_bn]["name"], "rt") as f:
+                dtype, shape, recsize = read_meta(f)
+            n_records, r = divmod(stat["size"], recsize)
+            assert r == 0
+            rval[base] = n_records
+    return rval

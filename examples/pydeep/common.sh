@@ -21,9 +21,13 @@ utc_timestamp_ns () {
 export -f use_two_classes downsample utc_timestamp_ns
 
 export BNECKS_DIR="${BNECKS_DIR:-bottlenecks}"
-export CMP_OUTPUT_DIR="${CMP_OUTPUT_DIR:-cmp_results}"
+export CMP_INPUT_DIR="${CMP_INPUT_DIR:-cmp_input}"
 export CMP_NUM_MAPS="${CMP_NUM_MAPS-2}"
+export CMP_OUTPUT_DIR="${CMP_OUTPUT_DIR:-cmp_results}"
 export GENBNECKS_NUM_MAPS="${GENBNECKS_NUM_MAPS-4}"
+export KERAS_INPUT_DIR="${KERAS_INPUT_DIR-keras_input}"
+export KERAS_NUM_MAPS="${KERAS_NUM_MAPS-1}"
+export KERAS_OUTPUT_DIR="${KERAS_OUTPUT_DIR-keras_output}"
 export LIBHDFS_OPTS="${LIBHDFS_OPTS:--Xmx512m}"
 export NUM_STEPS="${NUM_STEPS:-400}"
 export PLOTS_DIR="${PLOTS_DIR:-training_plots}"

@@ -1,5 +1,7 @@
 """\
 Compare results from different models.
+
+Input: for each model, *one* arrayblob containing all predictions.
 """
 
 from itertools import combinations
@@ -18,8 +20,8 @@ from pydoop.app.submit import (
 from pydoop.utils.serialize import OpaqueInputSplit, write_opaques
 from pydoop import hdfs
 
+import pydeep.arrayblob as arrayblob
 import pydeep.common as common
-import pydeep.models as models
 
 LOGGER = logging.getLogger("compare_models")
 WORKER = "cmpworker"
@@ -28,10 +30,6 @@ PACKAGE = "pydeep"
 
 def make_parser():
     parser = argparse.ArgumentParser()
-    # TODO: extend to generic models
-    parser.add_argument('--architecture', metavar='STR',
-                        default=models.DEFAULT)
-    parser.add_argument('--bnecks-dir', metavar='DIR', default='bottlenecks')
     parser.add_argument('--num-maps', metavar='INT', type=int, default=2)
     add_parser_common_arguments(parser)
     add_parser_arguments(parser)
@@ -40,21 +38,19 @@ def make_parser():
 
 def generate_input_splits(N, input_dir, splits_path):
     """\
-    Generate all possible model pairs and assign a subset to each
-    split. Assumes each model is described by a single file (possibly
-    an archive that needs to be unpacked).
+    Generate all possible blob pairs and assign a subset to each split.
     """
-    paths = [_["name"] for _ in hdfs.lsl(input_dir)
-             if not _["name"].startswith("_") and _["kind"] == "file"]
-    n_paths = len(paths)
-    LOGGER.debug("found %d models" % n_paths)
-    if n_paths < 2:
-        raise ValueError("not enough models for a comparison")
-    n_pairs = n_paths * (n_paths - 1) // 2
+    blobs = [hdfs.path.join(input_dir, _)
+             for _ in arrayblob.map_blobs(input_dir)]
+    n_blobs = len(blobs)
+    LOGGER.debug("%r: found %d blobs", input_dir, n_blobs)
+    if n_blobs < 2:
+        raise ValueError("not enough blobs for a comparison")
+    n_pairs = n_blobs * (n_blobs - 1) // 2
     if N > n_pairs:
         N = n_pairs
-        LOGGER.warn("Not enough model pairs, will only do %d splits" % N)
-    splits = common.balanced_split(list(combinations(paths, 2)), N)
+        LOGGER.warn("Not enough blob pairs, will only do %d splits", N)
+    splits = common.balanced_split(list(combinations(blobs, 2)), N)
     LOGGER.debug("saving input splits to: %s", splits_path)
     with hdfs.open(splits_path, 'wb') as f:
         write_opaques([OpaqueInputSplit(1, _) for _ in splits], f)
@@ -85,8 +81,6 @@ def main(argv=None):
     submitter = PydoopSubmitter()
     submitter.set_args(args, [] if unknown_args is None else unknown_args)
     submitter.properties.update({
-        common.BNECKS_DIR_KEY: args.bnecks_dir,
-        common.GRAPH_ARCH_KEY: args.architecture,
         common.LOG_LEVEL_KEY: args.log_level,
         common.NUM_MAPS_KEY: args.num_maps,
         common.PYDOOP_EXTERNALSPLITS_URI_KEY: splits_path,

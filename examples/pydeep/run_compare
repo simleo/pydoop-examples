@@ -9,13 +9,8 @@ this_dir=$(cd -P -- "$(dirname -- "${this}")" && pwd -P)
 
 [ ${PY_VER} -le 2 ] && die "ERROR: Python 3 required"
 
-CMP_INPUT_DIR="cmp_input"
-
 pushd "${this_dir}"
-${HDFS} dfs -test -d "${TRAINED_MODELS_DIR}" || die "models dir not found"
-${HDFS} dfs -rm -r -f "${CMP_INPUT_DIR}"
-${HDFS} dfs -mkdir "${CMP_INPUT_DIR}"
-${HDFS} dfs -cp "${TRAINED_MODELS_DIR}"/'*.zip' "${CMP_INPUT_DIR}"
+${HDFS} dfs -test -d "${CMP_INPUT_DIR}" || die "input dir not found"
 ${HDFS} dfs -rm -r -f "${CMP_OUTPUT_DIR}"
-${PYTHON} compare_models.py --bnecks-dir "${BNECKS_DIR}" --num-maps "${CMP_NUM_MAPS}" --log-level "${LOG_LEVEL}" "${CMP_INPUT_DIR}" "${CMP_OUTPUT_DIR}"
+${PYTHON} compare_models.py --num-maps "${CMP_NUM_MAPS}" --log-level "${LOG_LEVEL}" "${CMP_INPUT_DIR}" "${CMP_OUTPUT_DIR}"
 popd

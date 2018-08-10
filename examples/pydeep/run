@@ -18,5 +18,5 @@ ${PYTHON} test_subsets.py --bnecks-dir "${BNECKS_DIR}" --num-maps "${TEST_NUM_MA
 ${HDFS} dfs -ls -C "${TEST_OUTPUT_DIR}" | grep -E 'part-m-[0-9]+$' | xargs ${HDFS} dfs -cat | sort
 ./run_dump_weights
 ./run_keras_predictions
-./run_compare
+CMP_INPUT_DIR="${KERAS_OUTPUT_DIR}" ./run_compare
 popd
