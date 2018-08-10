@@ -106,7 +106,7 @@ def main(argv=sys.argv):
         for cat in "train", "test":
             print("%s_%s: %r" % (s, cat, data[s][cat].shape))
     train_and_dump_models(data, args.n_models, args.output)
-    save_test_data(data["x"]["test"], args.output)
+    save_test_data(shrink(data["x"]["test"], 100), args.output)
 
 
 if __name__ == "__main__":
